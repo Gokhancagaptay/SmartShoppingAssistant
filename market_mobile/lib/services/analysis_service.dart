@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'dart:convert' show utf8, base64Url;
 import 'package:http/http.dart' as http;
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:market_mobile/services/stock_service.dart';
+import 'package:market_mobile/services/dietary_preferences_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'api_service.dart';
+import '../constants/api_constants.dart';
 
 class AnalysisService {
   static Future<String> suggestRecipe(List<String> ingredients, {String? token}) async {
@@ -103,7 +102,11 @@ class AnalysisService {
     }
   }
 
-  static Future<String> breakfastSuggestion({required String userId, required String recipeType}) async {
+  static Future<String> breakfastSuggestion({
+    required String userId,
+    required String recipeType,
+    String userRefinement = '',
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     if (token == null) throw Exception('Token bulunamadı');
@@ -126,6 +129,9 @@ class AnalysisService {
     print('Recipe Type: $recipeType');
     print('Stok Listesi: $stockNames');
     
+    // Diyet tercihlerini al ve isteğe ekle
+    final dietaryContext = await DietaryPreferencesService.buildDietaryContext();
+
     try {
       final response = await http.post(
         Uri.parse(url),
@@ -135,7 +141,9 @@ class AnalysisService {
         },
         body: jsonEncode({
           'recipe_type': recipeType,
-          'stock_items': stockNames
+          'stock_items': stockNames,
+          'dietary_preferences': dietaryContext,
+          'user_refinement': userRefinement,
         }),
       );
 
@@ -154,7 +162,11 @@ class AnalysisService {
     }
   }
 
-  static Future<String> dinnerSuggestion({required String userId, required String suggestionType}) async {
+  static Future<String> dinnerSuggestion({
+    required String userId,
+    required String suggestionType,
+    String userRefinement = '',
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     if (token == null) throw Exception('Token bulunamadı');
@@ -177,6 +189,9 @@ class AnalysisService {
     print('Suggestion Type: $suggestionType');
     print('Stok Listesi: $stockNames');
     
+    // Diyet tercihlerini al ve isteğe ekle
+    final dietaryContext = await DietaryPreferencesService.buildDietaryContext();
+
     try {
       final response = await http.post(
         Uri.parse(url),
@@ -186,7 +201,9 @@ class AnalysisService {
         },
         body: jsonEncode({
           'suggestion_type': suggestionType,
-          'stock_items': stockNames
+          'stock_items': stockNames,
+          'dietary_preferences': dietaryContext,
+          'user_refinement': userRefinement,
         }),
       );
 

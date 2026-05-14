@@ -1,7 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'api_service.dart';
+import '../constants/api_constants.dart';
 
 class StockService {
   static Future<List<Map<String, dynamic>>> fetchUserStock() async {

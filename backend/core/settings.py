@@ -1,33 +1,48 @@
 import os
+import logging
 from dotenv import load_dotenv
 
-# .env dosyasını yükle
+# Çalışma dizininden yukarıya doğru .env dosyasını ara (uvicorn backend/ içinden çalışır)
 load_dotenv()
 
-# Çevresel değişkenleri yükle
-MONGO_URL = os.getenv("MONGO_URL")
-FIREBASE_CREDENTIALS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "firebase.json")
-FIREBASE_API_KEY = os.getenv("FIREBASE_API_KEY")
-EMAIL = os.getenv("email")
-PASSWORD = os.getenv("password")
-GEMINI_API_KEY = "AIzaSyCqMqAcS8i-xoGD2_KsJeut0qMLfYngrSA"
+logger = logging.getLogger(__name__)
 
-# Gerekli değişkenlerin kontrolü
-required_vars = {
+# --- Uygulama ayarları (tamamı .env üzerinden okunur) ---
+MONGO_URL: str = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+
+# firebase.json backend/ klasöründe bulunur; settings.py ise backend/core/ içinde
+_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FIREBASE_CREDENTIALS: str = os.path.join(_backend_dir, "firebase.json")
+FIREBASE_API_KEY: str = os.getenv("FIREBASE_API_KEY", "")
+EMAIL: str = os.getenv("EMAIL", "")
+PASSWORD: str = os.getenv("PASSWORD", "")
+
+# GEMINI_API_KEY artık .env dosyasından okunuyor; kodda düz metin olarak tutmayın.
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+
+# --- Başlangıç doğrulaması ---
+_required = {
     "MONGO_URL": MONGO_URL,
     "FIREBASE_API_KEY": FIREBASE_API_KEY,
-    "EMAIL": EMAIL,
-    "PASSWORD": PASSWORD
+    "GEMINI_API_KEY": GEMINI_API_KEY,
 }
 
-# Eksik değişkenleri kontrol et
-missing_vars = [var for var, value in required_vars.items() if not value]
-if missing_vars:
-    print(f"⚠️ Eksik çevresel değişkenler: {', '.join(missing_vars)}")
+_missing = [k for k, v in _required.items() if not v]
+if _missing:
+    logger.warning("Eksik çevresel değişkenler: %s", ", ".join(_missing))
 else:
-    print("✅ Tüm gerekli çevresel değişkenler mevcut")
+    logger.info("Tüm gerekli çevresel değişkenler yüklendi.")
 
-print(f"✅ MONGO_URL: {MONGO_URL}")
-print(f"✅ FIREBASE_CREDENTIALS: {FIREBASE_CREDENTIALS}")
-print(f"✅ FIREBASE_API_KEY: {FIREBASE_API_KEY}")
-print(f"✅ GEMINI_API_KEY: {GEMINI_API_KEY}")
+
+def parse_cors_settings() -> tuple[list[str], bool]:
+    """
+    CORS_ORIGINS: virgülle ayrılmış origin listesi veya tek '*' .
+    '*' ile allow_credentials=True tarayıcı kurallarıyla uyumsuz olabileceği için credentials kapatılır.
+    """
+    raw = os.getenv("CORS_ORIGINS", "*").strip()
+    if raw == "*":
+        return ["*"], False
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    if not origins:
+        return ["*"], False
+    return origins, True

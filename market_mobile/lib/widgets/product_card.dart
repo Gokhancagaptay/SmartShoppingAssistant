@@ -1,17 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
-
-String getBaseUrl() {
-  if (kIsWeb) {
-    return 'http://localhost:8000';
-  } else {
-    return 'http://10.0.2.2:8000';
-  }
-}
+import '../theme/app_theme.dart';
 
 class ProductCard extends StatelessWidget {
   final String id;
@@ -37,99 +27,231 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cartProvider = context.watch<CartProvider>();
+    final cartQty = cartProvider.getItemQuantity(id);
+    final isOutOfStock = stock < 1;
+
     return Container(
-      width: 150,
-      height: 200,
-      margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
+        color: isDark ? AppTheme.darkCardColor : Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? AppTheme.darkBorder : const Color(0x0F000000),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: Stack(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Positioned.fill(
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const Center(
-                  child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(16),
-                  topRight: Radius.circular(16),
-                ),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.3),
-                    padding: const EdgeInsets.all(6),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+            // Ürün görseli
+            Expanded(
+              flex: 3,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: isDark
+                            ? const Color(0xFF1E293B)
+                            : const Color(0xFFF1F5F9),
+                        child: Center(
+                          child: Icon(
+                            Icons.image_not_supported_outlined,
+                            color: isDark ? const Color(0xFF475569) : Colors.grey[300],
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Stok bitti etiketi
+                  if (isOutOfStock)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        child: const Center(
+                          child: Text(
+                            'Stok\nBitti',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '₺${price.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                color: Color(0xFFFFD700),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Sepetteki adet rozeti
+                  if (cartQty > 0)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: AppTheme.primaryGradient,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withValues(alpha: 0.4),
+                              blurRadius: 8,
                             ),
                           ],
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.add_shopping_cart, size: 18),
-                          color: Colors.white.withOpacity(0.8),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          onPressed: () {
-                            if (stock < 1) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Ürün sepete eklenemedi")),
-                              );
-                            } else {
-                              Provider.of<CartProvider>(context, listen: false)
-                                  .addItem(id, name, price, imageUrl, stock: stock, unit: unit, label: label, category: category);
-                              print('Sepete eklenen ürün kategorisi: ${category}');
-                            }
+                        child: Text(
+                          '$cartQty',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Alt bilgi bölümü
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      name,
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '₺${price.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        // Sepet butonu
+                        _AddToCartButton(
+                          isOutOfStock: isOutOfStock,
+                          cartQty: cartQty,
+                          onAdd: () {
+                            context.read<CartProvider>().addItem(
+                              id, name, price, imageUrl,
+                              stock: stock, unit: unit, label: label, category: category,
+                            );
+                          },
+                          onRemove: () {
+                            context.read<CartProvider>().removeSingleItem(id);
                           },
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
               ),
-            )
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddToCartButton extends StatelessWidget {
+  final bool isOutOfStock;
+  final int cartQty;
+  final VoidCallback onAdd;
+  final VoidCallback onRemove;
+
+  const _AddToCartButton({
+    required this.isOutOfStock,
+    required this.cartQty,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isOutOfStock) {
+      return const SizedBox(
+        width: 32,
+        height: 32,
+        child: Icon(Icons.remove_shopping_cart_outlined, color: Colors.grey, size: 18),
+      );
+    }
+    if (cartQty > 0) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _SmallIconBtn(icon: Icons.remove, onTap: onRemove, isDanger: true),
+          const SizedBox(width: 2),
+          _SmallIconBtn(icon: Icons.add, onTap: onAdd),
+        ],
+      );
+    }
+    return GestureDetector(
+      onTap: onAdd,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: const BoxDecoration(
+          gradient: AppTheme.primaryGradient,
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.add, color: Colors.white, size: 18),
+      ),
+    );
+  }
+}
+
+class _SmallIconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool isDanger;
+
+  const _SmallIconBtn({required this.icon, required this.onTap, this.isDanger = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: isDanger
+              ? const Color(0xFFFEE2E2)
+              : AppTheme.primaryColor.withValues(alpha: 0.12),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: isDanger ? AppTheme.errorColor : AppTheme.primaryColor,
         ),
       ),
     );

@@ -1,21 +1,23 @@
-# 1️⃣ Python 3.11 sürümünü temel al
-FROM python:3.11
+FROM python:3.11-slim
 
-# 2️⃣ Çalışma dizinini belirle
 WORKDIR /app
 
-# 3️⃣ Gerekli bağımlılıkları yükle
+# Sistem bağımlılıklarını yükle
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bağımlılıkları önce kopyala (Docker layer cache optimizasyonu)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4️⃣ Uygulama dosyalarını kopyala
+# Uygulama kodunu kopyala
 COPY . .
 
-# 5️⃣ Çevresel değişkenleri ayarla
-ENV MONGO_URL=mongodb+srv://GokhanCagaptay:0102030h.H@onlinemarket.emtxzjn.mongodb.net/?retryWrites=true&w=majority&appName=onlineMarket
-ENV FIREBASE_CREDENTIALS=/app/firebase.json
+# UTF-8 encoding zorunlu (emoji/Türkçe karakter desteği için)
+ENV PYTHONIOENCODING=utf-8
+ENV PYTHONUNBUFFERED=1
 
-# 6️⃣ Başlangıç komutu (FastAPI başlat)
+EXPOSE 8000
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-

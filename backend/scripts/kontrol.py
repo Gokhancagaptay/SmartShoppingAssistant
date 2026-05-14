@@ -32,8 +32,8 @@ app.add_middleware(
 )
 # 📌 Kullanıcı ve ürün API'lerini buraya ekliyoruz
 app.include_router(user_router, prefix="/api/auth", tags=["Kullanıcı İşlemleri"])
-app.include_router(product_router, prefix="/products", tags=["Ürün İşlemleri"])
-app.include_router(recipe_router, prefix="/recipes", tags=["Tarif Önerisi"])
+app.include_router(product_router, prefix="/api/products", tags=["Ürün İşlemleri"])
+app.include_router(recipe_router, prefix="/api/recipes", tags=["Tarif Önerisi"])
 
 
 @app.get("/")

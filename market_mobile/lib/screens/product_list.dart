@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'dart:async';  // TimeoutException için gerekli import
+import 'dart:async';
 import '../widgets/product_card.dart';
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../providers/cart_provider.dart';
 import 'package:provider/provider.dart';
@@ -11,15 +10,20 @@ import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'stock_screen.dart';
+import '../theme/app_theme.dart';
+import '../constants/api_constants.dart';
+import '../theme/theme_mode_holder.dart';
+import 'dietary_preferences_screen.dart';
 
-
-String getBaseUrl() {
-  if (kIsWeb) {
-    return 'http://localhost:8000';
-  } else {
-    return 'http://10.0.2.2:8000';
-  }
-}
+/// Uygulama genelinde kullanılan kategori listesi
+const List<Map<String, dynamic>> kCategories = [
+  {"key": "meyve_sebze", "title": "Meyve & Sebze", "icon": Icons.eco_outlined},
+  {"key": "et_tavuk", "title": "Et & Tavuk", "icon": Icons.kebab_dining_outlined},
+  {"key": "sut_urunleri", "title": "Süt Ürünleri", "icon": Icons.water_drop_outlined},
+  {"key": "icecekler", "title": "İçecekler", "icon": Icons.local_drink_outlined},
+  {"key": "atistirmalik", "title": "Atıştırmalık", "icon": Icons.cookie_outlined},
+  {"key": "temizlik", "title": "Temizlik", "icon": Icons.cleaning_services_outlined},
+];
 
 class ProductListPage extends StatefulWidget {
   const ProductListPage({super.key});
@@ -29,117 +33,49 @@ class ProductListPage extends StatefulWidget {
 }
 
 class _ProductListPageState extends State<ProductListPage> {
-  List<dynamic> products = [];
-  String selectedCategory = "meyve_sebze";
+  List<dynamic> _products = [];
+  String _selectedCategory = "meyve_sebze";
   String? _token;
-
-  final List<Map<String, String>> categories = [
-    {"key": "meyve_sebze", "title": "Meyve ve Sebzeler"},
-    {"key": "et_tavuk", "title": "Et ve Tavuk"},
-    {"key": "sut_urunleri", "title": "Süt Ürünleri"},
-    {"key": "icecekler", "title": "İçecekler"},
-    {"key": "atistirmalik", "title": "Atıştırmalık"},
-    {"key": "temizlik", "title": "Temizlik"},
-  ];
+  bool _isLoading = false;
+  int _currentNavIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadTokenAndFetchProducts();
+    _loadTokenAndFetch();
   }
 
-  Future<void> _loadTokenAndFetchProducts() async {
-    await _getToken();
-    if (mounted) {
-      fetchProducts();
-    }
-  }
-
-  Future<void> _getToken() async {
+  Future<void> _loadTokenAndFetch() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    setState(() {
-      _token = prefs.getString('token');
-    });
-    print('ProductListPage Token loaded: $_token');
+    setState(() => _token = prefs.getString('token'));
+    fetchProducts();
   }
 
   Future<void> fetchProducts() async {
-    if (_token == null) {
-      print("Token bulunamadı, /products/by-category/$selectedCategory isteği için ürünler getirilemiyor.");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ürünleri görmek için lütfen giriş yapın.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
+    if (_token == null) return;
+    setState(() => _isLoading = true);
     try {
-      final url = Uri.parse("${getBaseUrl()}/products/by-category/$selectedCategory");
-      print("İstek URL: $url");
-      print("Kullanılan Token (products/by-category): Bearer $_token");
-
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $_token',
-        },
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw TimeoutException('Bağlantı zaman aşımına uğradı');
-        },
+      final url = Uri.parse('${getBaseUrl()}${ApiPaths.products}/').replace(
+        queryParameters: {'category': _selectedCategory},
       );
-
-      print("Response Status: ${response.statusCode}");
-      print("Response Body: ${response.body}");
+      final response = await http.get(url, headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $_token',
+      }).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        if (json["products"] != null) {
-          setState(() {
-            products = json["products"];
-          });
-        } else {
-          print("Ürün verisi bulunamadı");
-          setState(() {
-            products = [];
-          });
-        }
+        final decoded = jsonDecode(response.body);
+        final List<dynamic> list =
+            decoded is List ? decoded : (decoded['products'] as List<dynamic>? ?? []);
+        if (mounted) setState(() => _products = list);
       } else {
-        print("HATA: ${response.statusCode} - ${response.body}");
-        setState(() {
-          products = [];
-        });
-        // Hata mesajını göster
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Ürünler yüklenirken bir hata oluştu: ${response.statusCode}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        if (mounted) setState(() => _products = []);
       }
     } catch (e) {
-      print("Bağlantı hatası: $e");
-      setState(() {
-        products = [];
-      });
-      // Hata mesajını göster
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Bağlantı hatası: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (mounted) setState(() => _products = []);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -148,402 +84,536 @@ class _ProductListPageState extends State<ProductListPage> {
       context: context,
       barrierDismissible: true,
       barrierLabel: "Kapat",
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, anim1, anim2) {
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: 400,
-              height: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFF232323),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 24,
-                    offset: Offset(-8, 0),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                child: child,
-              ),
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 280),
+      pageBuilder: (context, anim1, anim2) => Align(
+        alignment: Alignment.centerRight,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 420,
+            height: double.infinity,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              boxShadow: [
+                BoxShadow(color: Colors.black26, blurRadius: 32, offset: const Offset(-4, 0)),
+              ],
             ),
+            child: SafeArea(child: child),
           ),
-        );
-      },
-      transitionBuilder: (context, anim1, anim2, child) {
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1, 0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOut)),
-          child: child,
-        );
-      },
+        ),
+      ),
+      transitionBuilder: (ctx, anim1, anim2, child) => SlideTransition(
+        position: Tween(begin: const Offset(1, 0), end: Offset.zero)
+            .animate(CurvedAnimation(parent: anim1, curve: Curves.easeOut)),
+        child: child,
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      // WEB TASARIMI
-      return Scaffold(
-        backgroundColor: const Color(0xFF232323),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF232323),
-          elevation: 0,
-          toolbarHeight: 80,
-          title: Row(
-            children: [
-              const Icon(Icons.shopping_basket, color: Colors.deepOrange, size: 36),
-              const SizedBox(width: 12),
-              const Text(
-                "Online Market",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28, letterSpacing: 0.5),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.account_circle, color: Colors.white, size: 32),
-                onPressed: () {
-                  _showSidePanel(context, const ProfileScreen(inPanel: true));
-                },
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: Stack(
-                  children: [
-                    const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 28),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Consumer<CartProvider>(
-                        builder: (context, cart, child) {
-                          return cart.itemCount > 0
-                              ? Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.deepOrange,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    '${cart.itemCount}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                )
-                              : const SizedBox.shrink();
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                onPressed: () {
-                  _showSidePanel(context, const CartScreen());
-                },
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.notifications_none, color: Colors.white70, size: 26),
-                onPressed: () {},
-              ),
-            ],
-          ),
-        ),
-        body: Row(
+    return kIsWeb ? _buildWebLayout() : _buildMobileLayout();
+  }
+
+  // -------------------------------------------------------
+  // WEB LAYOUT
+  // -------------------------------------------------------
+  Widget _buildWebLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      appBar: AppBar(
+        toolbarHeight: 72,
+        title: Row(
           children: [
-            // Sol Menü (Kategoriler)
+            // Logo
             Container(
-              width: 220,
-              color: const Color(0xFF232323),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 32),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(
-                      "Kategoriler",
-                      style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 0.2),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ...categories.map((item) {
-                    final isSelected = selectedCategory == item["key"];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: ListTile(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        tileColor: const Color(0xFF232323),
-                        leading: Icon(Icons.label, color: Colors.white),
-                        title: Text(
-                          item["title"]!,
-                          style: TextStyle(
-                            color: isSelected ? Colors.deepOrange : Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        onTap: () {
-                          setState(() {
-                            selectedCategory = item["key"]!;
-                            fetchProducts();
-                          });
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ],
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: const Icon(Icons.shopping_basket_rounded, color: Colors.white, size: 22),
             ),
-            // Sağ Grid (Ürünler)
-            Expanded(
-              child: Container(
-                color: const Color(0xFF282828),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 32),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        categories.firstWhere((element) => element['key'] == selectedCategory)['title'] ?? '',
-                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 24),
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            int crossAxisCount = 3;
-                            if (constraints.maxWidth > 1200) {
-                              crossAxisCount = 4;
-                            } else if (constraints.maxWidth < 900) {
-                              crossAxisCount = 2;
-                            }
-                            return GridView.builder(
-                              itemCount: products.length,
-                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: crossAxisCount,
-                                crossAxisSpacing: 24,
-                                mainAxisSpacing: 24,
-                                childAspectRatio: 3 / 4,
-                              ),
-                              itemBuilder: (context, index) {
-                                final product = products[index];
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(24),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.08),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  ),
-                                  child: ProductCard(
-                                    id: product["id"] ?? product["_id"] ?? product["name"],
-                                    imageUrl: product["image_url"],
-                                    name: product["name"],
-                                    price: (product["price"] as num).toDouble(),
-                                    stock: product["stock"] ?? 0,
-                                    category: product["category"] ?? selectedCategory,
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+            const SizedBox(width: 12),
+            const Text('Online Market', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Spacer(),
+            PopupMenuButton<String>(
+              tooltip: 'Diğer',
+              onSelected: (value) async {
+                switch (value) {
+                  case 'diet':
+                    if (!context.mounted) return;
+                    await Navigator.push<void>(
+                      context,
+                      MaterialPageRoute<void>(builder: (_) => const DietaryPreferencesScreen()),
+                    );
+                    break;
+                  case 'theme_light':
+                    await setAppThemeMode(ThemeMode.light);
+                    break;
+                  case 'theme_dark':
+                    await setAppThemeMode(ThemeMode.dark);
+                    break;
+                  case 'theme_system':
+                    await setAppThemeMode(ThemeMode.system);
+                    break;
+                }
+              },
+              itemBuilder: (ctx) => const [
+                PopupMenuItem(value: 'diet', child: Text('Diyet tercihleri')),
+                PopupMenuDivider(),
+                PopupMenuItem(value: 'theme_light', child: Text('Açık tema')),
+                PopupMenuItem(value: 'theme_dark', child: Text('Koyu tema')),
+                PopupMenuItem(value: 'theme_system', child: Text('Sistem teması')),
+              ],
+            ),
+            // Profil
+            IconButton(
+              icon: const Icon(Icons.account_circle_outlined),
+              onPressed: () => _showSidePanel(context, const ProfileScreen(inPanel: true)),
+            ),
+            // Sepet
+            Consumer<CartProvider>(
+              builder: (_, cart, __) => Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.shopping_cart_outlined),
+                    onPressed: () => _showSidePanel(context, const CartScreen()),
                   ),
-                ),
+                  if (cart.itemCount > 0)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          gradient: AppTheme.primaryGradient,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text('${cart.itemCount}',
+                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
         ),
-      );
-    }
-    // MOBİL TASARIM (mevcut haliyle)
-    return Scaffold(
-      backgroundColor: const Color(0xFF2F2F2F),
-      extendBody: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        toolbarHeight: 100,
-        automaticallyImplyLeading: false,
-        title: Row(
-           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(
+            height: 1,
+            color: isDark ? AppTheme.darkBorder : const Color(0x0F000000),
+          ),
+        ),
+      ),
+      body: Row(
+        children: [
+          // Sol kategori menüsü
+          Container(
+            width: 240,
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(
+                  color: isDark ? AppTheme.darkBorder : const Color(0x0F000000),
+                ),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                  child: Text(
+                    'KATEGORİLER',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+                ...kCategories.map((cat) {
+                  final isSelected = _selectedCategory == cat["key"];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    child: ListTile(
+                      dense: true,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      tileColor: isSelected
+                          ? AppTheme.primaryColor.withValues(alpha: 0.1)
+                          : Colors.transparent,
+                      leading: Icon(
+                        cat["icon"] as IconData,
+                        size: 20,
+                        color: isSelected ? AppTheme.primaryColor
+                            : (isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8)),
+                      ),
+                      title: Text(
+                        cat["title"]!,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                          color: isSelected ? AppTheme.primaryColor
+                              : (isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A)),
+                        ),
+                      ),
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ProfileScreen(inPanel: true)),
-                        );
+                        setState(() => _selectedCategory = cat["key"]!);
+                        fetchProducts();
                       },
-                      child: const Icon(Icons.account_circle, color: Colors.white, size: 32),
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      "Find the Best\nHealth for You",
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                  );
+                }),
+              ],
+            ),
+          ),
+          // Sağ ürün grid
+          Expanded(child: _buildProductGrid(isWeb: true)),
+        ],
+      ),
+    );
+  }
+
+  // -------------------------------------------------------
+  // MOBİL LAYOUT
+  // -------------------------------------------------------
+  Widget _buildMobileLayout() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        toolbarHeight: 64,
+        title: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.shopping_basket_rounded, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 10),
+            const Text('Online Market'),
+          ],
+        ),
+        actions: [
+          Consumer<CartProvider>(
+            builder: (_, cart, __) => Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.shopping_cart_outlined),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CartScreen()),
+                  ),
+                ),
+                if (cart.itemCount > 0)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        gradient: AppTheme.primaryGradient,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text('${cart.itemCount}',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
                     ),
-                  ],
-    ),
-    IconButton(
-      icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 28),
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const CartScreen()),
-        );
-      },
-    ),
-  ],
+                  ),
+              ],
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Diğer',
+            onSelected: (value) async {
+              switch (value) {
+                case 'diet':
+                  if (!context.mounted) return;
+                  await Navigator.push<void>(
+                    context,
+                    MaterialPageRoute<void>(builder: (_) => const DietaryPreferencesScreen()),
+                  );
+                  break;
+                case 'theme_light':
+                  await setAppThemeMode(ThemeMode.light);
+                  break;
+                case 'theme_dark':
+                  await setAppThemeMode(ThemeMode.dark);
+                  break;
+                case 'theme_system':
+                  await setAppThemeMode(ThemeMode.system);
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(value: 'diet', child: Text('Diyet tercihleri')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'theme_light', child: Text('Açık tema')),
+              PopupMenuItem(value: 'theme_dark', child: Text('Koyu tema')),
+              PopupMenuItem(value: 'theme_system', child: Text('Sistem teması')),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(height: 1,
+            color: isDark ? AppTheme.darkBorder : const Color(0x0F000000)),
         ),
       ),
       body: Column(
         children: [
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 42,
+          // Kategori kaydırma çubuğu
+          Container(
+            height: 52,
+            decoration: BoxDecoration(
+              color: isDark ? AppTheme.darkSurface : Colors.white,
+              border: Border(
+                bottom: BorderSide(
+                  color: isDark ? AppTheme.darkBorder : const Color(0x0F000000),
+                ),
+              ),
+            ),
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: categories.length,
-              itemBuilder: (context, index) {
-                final item = categories[index];
-                final isSelected = selectedCategory == item["key"];
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              itemCount: kCategories.length,
+              itemBuilder: (ctx, i) {
+                final cat = kCategories[i];
+                final isSelected = _selectedCategory == cat["key"];
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: ChoiceChip(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    label: Text(
-                      item["title"]!,
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.black87,
-                        fontWeight: FontWeight.w500,
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _selectedCategory = cat["key"]!);
+                      fetchProducts();
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: isSelected ? AppTheme.primaryGradient : null,
+                        color: isSelected ? null
+                            : (isDark ? AppTheme.darkCardColor : const Color(0xFFF1F5F9)),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: isSelected
+                            ? [BoxShadow(
+                                color: AppTheme.primaryColor.withValues(alpha: 0.35),
+                                blurRadius: 8, offset: const Offset(0, 3))]
+                            : [],
+                      ),
+                      child: Text(
+                        cat["title"]!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isSelected ? Colors.white
+                              : (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B)),
+                        ),
                       ),
                     ),
-                    selected: isSelected,
-                    selectedColor: Colors.deepOrangeAccent,
-                    backgroundColor: Colors.white,
-                    onSelected: (_) {
-                      setState(() {
-                        selectedCategory = item["key"]!;
-                        fetchProducts();
-                      });
-                    },
                   ),
                 );
               },
             ),
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 16.0),
-              child: Text(
-                categories.firstWhere((element) => element['key'] == selectedCategory)['title'] ?? '',
-                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: GridView.builder(
-                itemCount: products.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 3 / 4,
-                ),
-                itemBuilder: (context, index) {
-                  final product = products[index];
-                  return ProductCard(
-                    id: product["id"] ?? product["_id"] ?? product["name"],
-                    imageUrl: product["image_url"],
-                    name: product["name"],
-                    price: (product["price"] as num).toDouble(),
-                    stock: product["stock"] ?? 0,
-                    category: product["category"] ?? selectedCategory,
-                  );
-                },
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.home, color: Colors.black87),
-                    onPressed: () {
-                      // Ana sayfaya gitme veya mevcut sayfada kalma işlemi
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined, color: Colors.black54),
-                    onPressed: () {
-                      // Ayarlar sayfasına gitme işlemi
-                      // Örneğin: Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen()));
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.shopping_cart_outlined, color: Colors.deepOrangeAccent),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const CartScreen()),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.person_outline, color: Colors.black54),
-                    onPressed: () {
-                       Navigator.push(
-                         context,
-                         MaterialPageRoute(builder: (_) => const ProfileScreen(inPanel: false)),
-                       );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // Ürün ızgarası
+          Expanded(child: _buildProductGrid(isWeb: false)),
         ],
       ),
+      bottomNavigationBar: _buildBottomNav(isDark),
+    );
+  }
+
+  Widget _buildBottomNav(bool isDark) {
+    final cartCount = context.watch<CartProvider>().itemCount;
+    final primary = isDark ? AppTheme.primaryDarkColor : AppTheme.primaryColor;
+    final muted = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
+
+    return SafeArea(
+      top: false,
+      child: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          height: 68,
+          indicatorColor: primary.withValues(alpha: 0.14),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? primary : muted,
+            );
+          }),
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return IconThemeData(color: selected ? primary : muted, size: 24);
+          }),
+        ),
+        child: NavigationBar(
+        selectedIndex: _currentNavIndex,
+        backgroundColor: isDark ? AppTheme.darkSurface : Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.black26,
+        elevation: isDark ? 0 : 6,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: (index) async {
+          if (index == 0) {
+            setState(() => _currentNavIndex = 0);
+            return;
+          }
+          setState(() => _currentNavIndex = index);
+          if (index == 1) {
+            await Navigator.push<void>(
+              context,
+              MaterialPageRoute<void>(builder: (_) => StockScreen()),
+            );
+          } else if (index == 2) {
+            await Navigator.push<void>(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const CartScreen()),
+            );
+          } else if (index == 3) {
+            await Navigator.push<void>(
+              context,
+              MaterialPageRoute<void>(builder: (_) => const ProfileScreen(inPanel: false)),
+            );
+          }
+          if (mounted) setState(() => _currentNavIndex = 0);
+        },
+        destinations: [
+          const NavigationDestination(
+            icon: Icon(Icons.store_outlined),
+            selectedIcon: Icon(Icons.store_rounded),
+            label: 'Mağaza',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2_rounded),
+            label: 'Stoğum',
+          ),
+          NavigationDestination(
+            icon: _CartNavIcon(outlined: true, count: cartCount),
+            selectedIcon: _CartNavIcon(outlined: false, count: cartCount),
+            label: 'Sepet',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
+            label: 'Profil',
+          ),
+        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductGrid({required bool isWeb}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation(AppTheme.primaryColor),
+        ),
+      );
+    }
+    if (_products.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.shopping_bag_outlined, size: 64,
+              color: isDark ? const Color(0xFF334155) : Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text('Bu kategoride ürün bulunamadı',
+              style: TextStyle(
+                color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                fontSize: 15,
+              )),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.all(isWeb ? 24 : 12),
+      child: LayoutBuilder(
+        builder: (ctx, constraints) {
+          int crossAxisCount;
+          if (isWeb) {
+            crossAxisCount = constraints.maxWidth > 1200 ? 4 : constraints.maxWidth > 900 ? 3 : 2;
+          } else {
+            crossAxisCount = 2;
+          }
+          return GridView.builder(
+            itemCount: _products.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: isWeb ? 20 : 12,
+              mainAxisSpacing: isWeb ? 20 : 12,
+              childAspectRatio: 3 / 4.2,
+            ),
+            itemBuilder: (ctx, index) {
+              final p = _products[index];
+              return ProductCard(
+                id: p["id"] ?? p["_id"] ?? p["name"],
+                imageUrl: p["image_url"] ?? '',
+                name: p["name"] ?? '',
+                price: (p["price"] as num).toDouble(),
+                stock: p["stock"] ?? 0,
+                category: p["category"] ?? _selectedCategory,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Sepet sekmesi için rozetli ikon (Material NavigationBar ile uyumlu).
+class _CartNavIcon extends StatelessWidget {
+  final bool outlined;
+  final int count;
+
+  const _CartNavIcon({required this.outlined, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(
+      outlined ? Icons.shopping_cart_outlined : Icons.shopping_cart_rounded,
+      size: 24,
+    );
+    if (count <= 0) return icon;
+    final label = count > 99 ? '99+' : '$count';
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        icon,
+        Positioned(
+          right: -8,
+          top: -6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: const BoxDecoration(
+              gradient: AppTheme.primaryGradient,
+              borderRadius: BorderRadius.all(Radius.circular(10)),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

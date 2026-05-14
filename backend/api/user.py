@@ -1,8 +1,10 @@
 import requests
+import math
 from fastapi import APIRouter, HTTPException, Depends, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from firebase_admin import auth, credentials, firestore, initialize_app
 from pydantic import BaseModel
+from typing import List, Optional
 from core.settings import FIREBASE_API_KEY
 from firebase_admin import db
 from models.user import Address, StockItem, User
@@ -10,11 +12,49 @@ from database import (
     get_user_by_email, add_address, get_addresses,
     add_stock_item, get_stock_items, update_stock_item,
     delete_stock_item, create_user,
-    get_user_by_uid, create_user_from_firebase
+    get_user_by_uid, create_user_from_firebase,
+    products_collection,
 )
 
 router = APIRouter(tags=["auth"])
 security = HTTPBearer()
+
+
+def _decode_uid_or_401(credentials: HTTPAuthorizationCredentials, path_user_id: str) -> dict:
+    """Bearer JWT doğrular; hatalarda 401 (RTDB öncesi 500 dönmesin)."""
+    try:
+        decoded = auth.verify_id_token(credentials.credentials)
+    except Exception:
+        raise HTTPException(
+            status_code=401,
+            detail="Geçersiz veya süresi dolmuş oturum. Lütfen yeniden giriş yapın.",
+        )
+    if decoded.get("uid") != path_user_id:
+        raise HTTPException(status_code=403, detail="Yetki hatası")
+    return decoded
+
+
+def _normalize_dietary_prefs(data) -> dict:
+    """RTDB'den gelen diyet tercihlerini sabit şemaya çevirir."""
+    if not data:
+        return {"tags": [], "custom_note": ""}
+    if not isinstance(data, dict):
+        return {"tags": [], "custom_note": ""}
+    raw_tags = data.get("tags", [])
+    if isinstance(raw_tags, str):
+        tags = [raw_tags.strip()] if raw_tags.strip() else []
+    elif isinstance(raw_tags, dict):
+        tags = [str(v) for v in raw_tags.values() if v is not None and str(v).strip()]
+    elif isinstance(raw_tags, list):
+        tags = [str(t).strip() for t in raw_tags if t is not None and str(t).strip()]
+    else:
+        tags = []
+    note = data.get("custom_note", "")
+    if note is None:
+        note = ""
+    elif not isinstance(note, str):
+        note = str(note)
+    return {"tags": tags, "custom_note": note}
 
 class UserRegister(BaseModel):
     email: str
@@ -47,44 +87,35 @@ class UserUpdate(BaseModel):
     current_password: str = None
 
 # 🔹 Kullanıcı kayıt işlemi
-@router.post("/register", summary="Kullanıcı Kaydı", description="Yeni bir kullanıcı kaydı oluşturur.")
-def register(user: UserRegister):
-    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_API_KEY}"
-    payload = {
-        "email": user.email,
-        "password": user.password,
-        "returnSecureToken": True
-    }
-    response = requests.post(url, json=payload)
-    data = response.json()
+# Frontend Firebase SDK ile kullanıcıyı oluşturur, bu endpoint sadece profil verisini kaydeder.
+@router.post("/register", summary="Kullanıcı Kaydı", description="Firebase ile oluşturulan kullanıcının profil bilgilerini kaydeder.")
+async def register(user: UserRegister, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    # Token'ı doğrulayarak UID'yi al (kullanıcı frontend'de zaten oluşturuldu)
+    try:
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        user_id = decoded_token["uid"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Geçersiz token: {str(e)}")
 
-    if "idToken" in data:
-        user_id = data["localId"]
+    # Kullanıcıya rol ata
+    try:
+        auth.set_custom_user_claims(user_id, {"role": user.role})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Rol ataması hatası: {str(e)}")
 
-        # Firebase yetki rolü atama
-        try:
-            auth.set_custom_user_claims(user_id, {"role": user.role})
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Rol ataması hatası: {str(e)}")
+    # Profil bilgilerini Realtime Database'e kaydet
+    try:
+        db.reference(f"users/{user_id}").set({
+            "name": user.name,
+            "surname": user.surname,
+            "phone": user.phone,
+            "email": user.email,
+            "role": user.role
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Veritabanı yazım hatası: {str(e)}")
 
-        # Ek kullanıcı bilgilerini realtime database'e yazma
-        try:
-            db.reference(f"users/{user_id}").set({
-                "name": user.name,
-                "surname": user.surname,
-                "phone": user.phone,
-                "email": user.email,
-                "role": user.role
-            })
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Veritabanı yazım hatası: {str(e)}")
-
-        return {"message": "Kullanıcı başarıyla kaydedildi!", "idToken": data["idToken"]}
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=data.get("error", {}).get("message", "Bilinmeyen hata!")
-        )
+    return {"message": "Kullanıcı profili başarıyla kaydedildi!", "uid": user_id}
 
 # 🔹 Kullanıcı giriş işlemi
 @router.post("/login", summary="Kullanıcı Girişi", description="Mevcut bir kullanıcı için giriş yapar.")
@@ -136,45 +167,32 @@ async def login(user: UserLogin):
 # 🔹 Token doğrulama
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    print(f"🔑 Token doğrulama başladı - Token: {token[:20]}...")  # Token'ın ilk 20 karakterini göster
-    
     try:
-        # Token'ı doğrula
         decoded_token = auth.verify_id_token(token)
         user_id = decoded_token.get("uid")
-        
+
         if not user_id:
-            print("❌ Token'dan uid alınamadı")
             raise HTTPException(status_code=401, detail="Geçersiz token: uid bulunamadı")
-            
-        print(f"✅ Token doğrulandı - User ID: {user_id}")
-        
-        # Realtime Database'den kullanıcı bilgilerini al
+
         user_data = db.reference(f"users/{user_id}").get()
-        print(f"📦 Firebase'den gelen kullanıcı verileri: {user_data}")
-        
+
         if not user_data:
-            print(f"❌ Kullanıcı bulunamadı: {user_id}")
             raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı")
-            
-        # uid'yi user_data içine ekle
+
         user_data["uid"] = user_id
         role = user_data.get("role", "user")
-        
-        print(f"✅ Kullanıcı bilgileri hazırlandı - Role: {role}")
+
         return user_data, role
-        
+
     except auth.InvalidIdTokenError:
-        print("❌ Geçersiz token hatası")
         raise HTTPException(status_code=401, detail="Geçersiz token")
     except auth.ExpiredIdTokenError:
-        print("❌ Token süresi dolmuş")
         raise HTTPException(status_code=401, detail="Token süresi dolmuş")
     except auth.RevokedIdTokenError:
-        print("❌ Token iptal edilmiş")
         raise HTTPException(status_code=401, detail="Token iptal edilmiş")
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"❌ Beklenmeyen hata: {str(e)}")
         raise HTTPException(status_code=401, detail=f"Yetkilendirme başarısız: {str(e)}")
 
 # 🔹 Kullanıcı bilgilerini getirme
@@ -441,3 +459,382 @@ def delete_stock(user_id: str, product_id: str, current_user: dict = Depends(get
 @router.put("/auth/update", summary="Kullanıcı Profilini Güncelle (Eski Yol)")
 async def update_profile_old_path(user_data: UserUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):
     return await update_profile(user_data, credentials)
+
+
+# ─── Sipariş Modelleri ───────────────────────────────────────────────────────
+
+class OrderItem(BaseModel):
+    id: str
+    name: str
+    price: float
+    quantity: int
+    category: str = ""
+    image_url: str = ""
+    unit: str = ""
+
+class OrderAddress(BaseModel):
+    title: str = ""
+    fullName: str = ""
+    phone: str = ""
+    city: str = ""
+    district: str = ""
+    detail: str = ""
+
+class CreateOrderRequest(BaseModel):
+    address: OrderAddress
+    payment_method: str = "card"
+    items: list[OrderItem] = []
+    total_price: float = 0.0
+
+
+# ─── Sipariş Endpoint'leri ───────────────────────────────────────────────────
+
+@router.post("/orders", summary="Sipariş Oluştur")
+async def create_order(
+    order_data: CreateOrderRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Sepeti sipariş olarak kaydeder.
+    - Firebase'e sipariş + kullanıcı stok güncellemesi yazar.
+    - MongoDB'deki ürün stoklarını düşürür.
+    """
+    import logging
+    import uuid
+    import asyncio
+    from datetime import datetime, timezone
+    from database import products_collection
+    from bson import ObjectId
+
+    logger = logging.getLogger("order")
+
+    try:
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        uid = decoded_token["uid"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Geçersiz token: {str(e)}")
+
+    order_id = f"ORD-{uuid.uuid4().hex[:10].upper()}"
+    order_doc = {
+        "order_id": order_id,
+        "uid": uid,
+        "items": [item.dict() for item in order_data.items],
+        "address": order_data.address.dict(),
+        "payment_method": order_data.payment_method,
+        "total_price": order_data.total_price,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        await asyncio.to_thread(db.reference(f"users/{uid}/orders/{order_id}").set, order_doc)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sipariş kaydedilemedi: {str(e)}")
+
+    # ── Kullanıcı stoğunu güncelle (Firebase) ─────────────────────────────────
+    print(f"[ORDER] Stok guncellenecek urun sayisi: {len(order_data.items)}")
+
+    def _update_user_stock():
+        """Firebase senkron işlemlerini ayrı thread'de çalıştır."""
+        for item in order_data.items:
+            try:
+                print(f"[STOCK] Isleniyor: {item.name} (id={item.id}) x{item.quantity}")
+                # Firebase key'inde kullanılamayan karakterleri temizle
+                safe_key = item.id.replace(".", "_").replace("#", "_").replace("$", "_").replace("[", "_").replace("]", "_").replace("/", "_")
+                stock_ref = db.reference(f"users/{uid}/stock_items/{safe_key}")
+                existing = stock_ref.get()
+                if existing:
+                    new_qty = existing.get("quantity", 0) + item.quantity
+                    stock_ref.update({"quantity": new_qty})
+                    print(f"[STOCK] Guncellendi: {item.name} -> {new_qty}")
+                else:
+                    stock_ref.set({
+                        "product_id": item.id,
+                        "name": item.name,
+                        "quantity": item.quantity,
+                        "category": item.category,
+                        "unit": item.unit,
+                        "image_url": item.image_url,
+                    })
+                    print(f"[STOCK] Eklendi: {item.name} x{item.quantity}")
+            except Exception as e:
+                print(f"[STOCK ERROR] {item.name}: {str(e)}")
+
+    await asyncio.to_thread(_update_user_stock)
+
+    # ── Mağaza stoğunu düşür (MongoDB) ─────────────────────────────────────────
+    for item in order_data.items:
+        try:
+            await products_collection.update_one(
+                {"_id": ObjectId(item.id)},
+                {"$inc": {"stock": -item.quantity}}
+            )
+        except Exception as e:
+            logger.error(f"Magaza stok dusulemedi [{item.name}]: {str(e)}")
+
+    return {"message": "Sipariş başarıyla oluşturuldu", "order_id": order_id}
+
+
+@router.get("/orders", summary="Siparişleri Listele")
+def list_orders(current_user: dict = Depends(get_current_user)):
+    """Giriş yapmış kullanıcının tüm siparişlerini döner."""
+    try:
+        uid = current_user["uid"]
+        ref = db.reference(f"users/{uid}/orders")
+        data = ref.get()
+        if not data:
+            return []
+        return list(data.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Siparişler alınamadı: {str(e)}")
+
+
+# ─── Checkout Adres Modeli & Endpoint'leri ──────────────────────────────────
+
+class CheckoutAddressModel(BaseModel):
+    title: str = ""
+    fullName: str = ""
+    phone: str = ""
+    city: str = ""
+    district: str = ""
+    detail: str = ""
+
+
+@router.post("/users/{user_id}/saved-addresses", summary="Checkout Adresi Kaydet")
+def save_checkout_address(
+    user_id: str,
+    address: CheckoutAddressModel,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Kullanıcının checkout adresini Firebase'e kaydeder."""
+    try:
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+        ref = db.reference(f"users/{user_id}/saved_addresses").push()
+        ref.set(address.dict())
+        return {"success": True, "id": ref.key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Adres kaydedilemedi: {str(e)}")
+
+
+@router.get("/users/{user_id}/saved-addresses", summary="Checkout Adreslerini Listele")
+def list_saved_addresses(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Kullanıcının kayıtlı checkout adreslerini döner."""
+    try:
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+        ref = db.reference(f"users/{user_id}/saved_addresses")
+        data = ref.get()
+        if not data:
+            return []
+        return [{"id": k, **v} for k, v in data.items()]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Adresler alınamadı: {str(e)}")
+
+
+@router.get("/users/{user_id}/dietary-preferences", summary="Diyet Tercihlerini Getir")
+def get_dietary_preferences(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Kullanıcının kayıtlı diyet tercihlerini döner."""
+    try:
+        _decode_uid_or_401(credentials, user_id)
+        ref = db.reference(f"users/{user_id}/dietary_preferences")
+        data = ref.get()
+        return _normalize_dietary_prefs(data)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tercihler alınamadı: {str(e)}")
+
+
+@router.put("/users/{user_id}/dietary-preferences", summary="Diyet Tercihlerini Kaydet")
+def save_dietary_preferences(
+    user_id: str,
+    body: dict,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Kullanıcının diyet tercihlerini Firebase'e kaydeder.
+    Body: { "tags": ["vejetaryen", "glütensiz"], "custom_note": "Şeker kullanmıyorum." }
+    """
+    try:
+        _decode_uid_or_401(credentials, user_id)
+        ref = db.reference(f"users/{user_id}/dietary_preferences")
+        ref.set({
+            "tags": body.get("tags", []),
+            "custom_note": body.get("custom_note", ""),
+        })
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tercihler kaydedilemedi: {str(e)}")
+
+
+@router.delete("/users/{user_id}/saved-addresses/{address_id}", summary="Kayıtlı Adresi Sil")
+def delete_saved_address(
+    user_id: str,
+    address_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    try:
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+        db.reference(f"users/{user_id}/saved_addresses/{address_id}").delete()
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Adres silinemedi: {str(e)}")
+
+
+# ─────────────────────────────────────────────
+#  Tarif Stok Düşümü
+# ─────────────────────────────────────────────
+
+class RecipeIngredient(BaseModel):
+    product_name: str
+    quantity: float
+    unit: str
+
+class DeductRecipeRequest(BaseModel):
+    ingredients: List[RecipeIngredient]
+    servings: int = 1  # Kaç kişilik yapıldı
+
+
+def _name_matches(stock_name: str, ingredient_name: str) -> bool:
+    """
+    Stok ürünü adı ile tarif malzemesi adının eşleşip eşleşmediğini kontrol eder.
+    Büyük/küçük harf farkını ve kısmi eşleşmeyi göz ardı eder.
+    """
+    s = stock_name.lower().strip()
+    i = ingredient_name.lower().strip()
+    return i in s or s in i
+
+
+# Gram/ml cinsinden küçük miktarlar için stok düşülmez (baharat, yağ vb. tek kullanım sayılır)
+_UNIT_DEDUCT_ONE = {"gram", "ml", "yemek kaşığı", "çay kaşığı", "tutam", "damla", "dilim", "yaprak"}
+
+
+@router.post("/users/{user_id}/stock/deduct-recipe", summary="Tarif Stok Düşümü")
+async def deduct_recipe_stock(
+    user_id: str,
+    body: DeductRecipeRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """
+    Kullanıcının pişirdiği tarife göre stoğundan malzeme düşer.
+    - 'adet' birimi: porsiyon * miktar kadar düşülür.
+    - Gram/ml/kaşık gibi birimler: her porsiyon için 1 birim düşülür.
+    Düşüm sonrası azalan veya biten ürünleri ve mağazada satılanları döner.
+    """
+    try:
+        decoded_token = auth.verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+
+        servings = max(1, body.servings)
+
+        # ── Kullanıcı stoku ──
+        stock_ref = db.reference(f"users/{user_id}/stock_items")
+        stock: dict = stock_ref.get() or {}
+
+        # ── Mağaza ürünleri (uyarı için ad + resim) ──
+        store_cursor = products_collection.find({}, {"name": 1, "image_url": 1, "_id": 0})
+        store_products = await store_cursor.to_list(length=500)
+
+        deducted = []       # Başarıyla düşülen ürünler
+        low_stock = []      # Azalan ürünler (qty <= 2)
+        depleted = []       # Biten ürünler (qty <= 0)
+        not_found = []      # Kullanıcı stokunda olmayan ürünler
+        buy_suggestions = []  # Mağazadan alınabilecek ürünler
+
+        for ing in body.ingredients:
+            # Düşülecek miktar hesapla
+            unit_lower = ing.unit.lower().strip()
+            if unit_lower == "adet":
+                deduct_amount = math.ceil(ing.quantity * servings)
+            else:
+                # Hacim/ağırlık birimlerinde 1 birim/porsiyon düşülür
+                deduct_amount = servings
+
+            # Kullanıcı stokunda eşleşen ürünü bul
+            matched_key = None
+            matched_item = None
+            for key, item in stock.items():
+                if isinstance(item, dict) and _name_matches(item.get("name", ""), ing.product_name):
+                    matched_key = key
+                    matched_item = item
+                    break
+
+            if not matched_key:
+                not_found.append(ing.product_name)
+                # Mağazada var mı kontrol et
+                for sp in store_products:
+                    if _name_matches(sp.get("name", ""), ing.product_name):
+                        buy_suggestions.append({
+                            "name": ing.product_name,
+                            "store_name": sp["name"],
+                            "image_url": sp.get("image_url", ""),
+                            "reason": "stokta_yok",
+                        })
+                        break
+                continue
+
+            current_qty = int(matched_item.get("quantity", 0))
+            new_qty = current_qty - deduct_amount
+
+            if new_qty <= 0:
+                # Stoğu tamamen bitir
+                db.reference(f"users/{user_id}/stock_items/{matched_key}").delete()
+                depleted.append(ing.product_name)
+                # Stoktan kaldı, mağazadan alabilir mi?
+                for sp in store_products:
+                    if _name_matches(sp.get("name", ""), ing.product_name):
+                        buy_suggestions.append({
+                            "name": ing.product_name,
+                            "store_name": sp["name"],
+                            "image_url": sp.get("image_url", ""),
+                            "reason": "bitti",
+                        })
+                        break
+            else:
+                db.reference(f"users/{user_id}/stock_items/{matched_key}").update({"quantity": new_qty})
+                deducted.append({"name": ing.product_name, "new_qty": new_qty})
+                if new_qty <= 2:
+                    low_stock.append({"name": ing.product_name, "quantity": new_qty})
+                    for sp in store_products:
+                        if _name_matches(sp.get("name", ""), ing.product_name):
+                            buy_suggestions.append({
+                                "name": ing.product_name,
+                                "store_name": sp["name"],
+                                "image_url": sp.get("image_url", ""),
+                                "reason": "azaldi",
+                                "quantity": new_qty,
+                            })
+                            break
+
+        return {
+            "deducted": deducted,
+            "low_stock": low_stock,
+            "depleted": depleted,
+            "not_found": not_found,
+            "buy_suggestions": buy_suggestions,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stok güncellenemedi: {str(e)}")

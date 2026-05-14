@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:market_mobile/services/api_service.dart'; // getBaseUrl için
+import 'package:market_mobile/constants/api_constants.dart'; // getBaseUrl için
 import 'package:market_mobile/services/auth_service.dart'; // AuthService için
 
 class AdminStockService {

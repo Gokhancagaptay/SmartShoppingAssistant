@@ -45,7 +45,7 @@ class _AdminProductManagementState extends State<AdminProductManagement> {
     });
 
     try {
-      final apiUrl = Uri.parse('$baseUrl/products');
+      final apiUrl = Uri.parse('${getBaseUrl()}${ApiPaths.products}');
       final response = await http.get(apiUrl);
 
       if (response.statusCode == 200) {
@@ -98,7 +98,7 @@ class _AdminProductManagementState extends State<AdminProductManagement> {
 
   Future<void> _updateProduct(String id, Map<String, dynamic> data) async {
     try {
-      final apiUrl = Uri.parse('$baseUrl/products/$id');
+      final apiUrl = Uri.parse('${getBaseUrl()}${ApiPaths.products}/$id');
       final response = await http.put(
         apiUrl,
         headers: {'Content-Type': 'application/json'},
@@ -120,7 +120,7 @@ class _AdminProductManagementState extends State<AdminProductManagement> {
 
   Future<void> _deleteProduct(String id) async {
     try {
-      final apiUrl = Uri.parse('$baseUrl/products/$id');
+      final apiUrl = Uri.parse('${getBaseUrl()}${ApiPaths.products}/$id');
       final response = await http.delete(apiUrl);
 
       if (response.statusCode == 200) {
@@ -401,7 +401,7 @@ class _AdminProductManagementState extends State<AdminProductManagement> {
                     'category': selectedCategory,
                   };
 
-                  final apiUrl = Uri.parse('$baseUrl/products');
+                  final apiUrl = Uri.parse('${getBaseUrl()}${ApiPaths.products}');
                   final response = await http.post(
                     apiUrl,
                     headers: {'Content-Type': 'application/json'},

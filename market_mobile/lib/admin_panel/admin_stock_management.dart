@@ -48,7 +48,7 @@ class _AdminStockManagementState extends State<AdminStockManagement> {
 
     try {
       // 1. Ürün verilerini MongoDB'den yükle
-      final productsResponse = await http.get(Uri.parse('$baseUrl/products'));
+      final productsResponse = await http.get(Uri.parse('${getBaseUrl()}${ApiPaths.products}'));
       
       if (productsResponse.statusCode == 200) {
         final List<dynamic> productsJson = jsonDecode(productsResponse.body);

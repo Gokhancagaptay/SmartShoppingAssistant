@@ -35,6 +35,11 @@ class CartProvider with ChangeNotifier {
     return _items.length;
   }
 
+  /// Belirli bir ürünün sepetteki miktarını döndürür (yoksa 0)
+  int getItemQuantity(String productId) {
+    return _items.containsKey(productId) ? _items[productId]!.quantity.toInt() : 0;
+  }
+
   double get totalAmount {
     var total = 0.0;
     _items.forEach((key, cartItem) {

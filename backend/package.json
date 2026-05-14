@@ -1,0 +1,8 @@
+{
+  "name": "smart-shopping-backend",
+  "private": true,
+  "scripts": {
+    "start": "python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000",
+    "test": "python -m pytest tests -q"
+  }
+}

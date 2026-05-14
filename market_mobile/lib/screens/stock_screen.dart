@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/stock_service.dart' show StockService;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/analysis_service.dart';
+import '../widgets/recipe_result_card.dart';
 import 'dart:convert';
+import '../theme/app_theme.dart';
 
 class _ParsedAnalysisResult {
   final String displayText;
@@ -136,7 +137,7 @@ class _StockScreenState extends State<StockScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF232323),
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
@@ -145,7 +146,7 @@ class _StockScreenState extends State<StockScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Kapat', style: TextStyle(color: Colors.deepOrange)),
+              child: const Text('Kapat', style: TextStyle(color: AppTheme.primaryColor)),
             ),
           ],
         ),
@@ -187,7 +188,7 @@ class _StockScreenState extends State<StockScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF232323),
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
@@ -196,7 +197,7 @@ class _StockScreenState extends State<StockScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Kapat', style: TextStyle(color: Colors.deepOrange)),
+              child: const Text('Kapat', style: TextStyle(color: AppTheme.primaryColor)),
             ),
           ],
         ),
@@ -243,7 +244,7 @@ class _StockScreenState extends State<StockScreen> {
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF232323),
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           content: SingleChildScrollView(
@@ -259,7 +260,7 @@ class _StockScreenState extends State<StockScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Kapat', style: TextStyle(color: Colors.deepOrangeAccent)),
+              child: const Text('Kapat', style: TextStyle(color: AppTheme.primaryColor)),
             ),
           ],
         ),
@@ -285,6 +286,7 @@ class _StockScreenState extends State<StockScreen> {
       print("Geçersiz akşam yemeği öneri tipi etiketi: $label");
       return;
     }
+    final dinnerType = suggestionType;
 
     showDialog(
       context: context,
@@ -295,37 +297,19 @@ class _StockScreenState extends State<StockScreen> {
     try {
       final rawSuggestion = await AnalysisService.dinnerSuggestion(
         userId: '',
-        suggestionType: suggestionType,
+        suggestionType: dinnerType,
       );
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      final parsedResult = _parseAnalysisResponse(rawSuggestion);
-      final String suggestionText = parsedResult.displayText;
-      final List<Map<String, dynamic>> ingredients = parsedResult.ingredientsForOne;
-
+      if (!mounted) return;
       showDialog(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF232323),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Text(suggestionText, style: const TextStyle(color: Colors.white70, fontSize: 16)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _showRecipeMadeDialog(context, label, ingredients.isNotEmpty ? ingredients : null);
-              },
-              child: const Text('Bu tarifi yaptım', style: TextStyle(color: Colors.greenAccent)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Kapat', style: TextStyle(color: Colors.deepOrangeAccent)),
-            ),
-          ],
+        builder: (ctx) => _RecipeSuggestionDialog(
+          title: label,
+          rawSuggestion: rawSuggestion,
+          mealKind: 'dinner',
+          apiKey: dinnerType,
         ),
       );
     } catch (e) {
@@ -349,6 +333,7 @@ class _StockScreenState extends State<StockScreen> {
       print("Geçersiz kahvaltı öneri tipi etiketi: $label");
       return;
     }
+    final breakfastType = recipeType;
 
     showDialog(
       context: context,
@@ -359,37 +344,19 @@ class _StockScreenState extends State<StockScreen> {
     try {
       final rawSuggestion = await AnalysisService.breakfastSuggestion(
         userId: '',
-        recipeType: recipeType,
+        recipeType: breakfastType,
       );
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      final parsedResult = _parseAnalysisResponse(rawSuggestion);
-      final String suggestionText = parsedResult.displayText;
-      final List<Map<String, dynamic>> ingredients = parsedResult.ingredientsForOne;
-
+      if (!mounted) return;
       showDialog(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF232323),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Text(suggestionText, style: const TextStyle(color: Colors.white70, fontSize: 16)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop();
-                _showRecipeMadeDialog(context, label, ingredients.isNotEmpty ? ingredients : null);
-              },
-              child: const Text('Bu tarifi yaptım', style: TextStyle(color: Colors.greenAccent)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Kapat', style: TextStyle(color: Colors.deepOrangeAccent)),
-            ),
-          ],
+        builder: (ctx) => _RecipeSuggestionDialog(
+          title: label,
+          rawSuggestion: rawSuggestion,
+          mealKind: 'breakfast',
+          apiKey: breakfastType,
         ),
       );
     } catch (e) {
@@ -589,11 +556,30 @@ class _StockScreenState extends State<StockScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.inventory_2, color: Colors.white24, size: 80),
-                const SizedBox(height: 18),
-                const Text('Stoğunuzda ürün yok.', style: TextStyle(color: Colors.white70, fontSize: 22, fontWeight: FontWeight.bold)),
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.inventory_2_outlined, color: AppTheme.primaryColor, size: 40),
+                ),
+                const SizedBox(height: 16),
+                Text('Stoğunuzda ürün yok.',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A),
+                  )),
                 const SizedBox(height: 8),
-                const Text('Ürün ekledikçe burada gözükecek.', style: TextStyle(color: Colors.white38, fontSize: 16)),
+                Text('Sipariş verdiğinizde ürünler burada görünecek.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                  )),
               ],
             ),
           );
@@ -723,7 +709,7 @@ class _StockScreenState extends State<StockScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF232323),
+                      color: Theme.of(context).scaffoldBackgroundColor,
                       borderRadius: BorderRadius.circular(18),
                   boxShadow: [ BoxShadow( color: Colors.black.withOpacity(0.13), blurRadius: 12, offset: const Offset(0, 4), ), ],
                       border: Border.all(color: Colors.grey.shade800, width: 1),
@@ -769,7 +755,7 @@ class _StockScreenState extends State<StockScreen> {
 
             return Container(
               decoration: BoxDecoration(
-              color: const Color(0xFF232323), borderRadius: BorderRadius.circular(18),
+              color: Theme.of(context).scaffoldBackgroundColor, borderRadius: BorderRadius.circular(18),
               boxShadow: [ BoxShadow( color: Colors.black.withOpacity(0.13), blurRadius: 12, offset: const Offset(0, 4), ), ],
                 border: Border.all(color: Colors.grey.shade800, width: 1),
               ),
@@ -791,8 +777,8 @@ class _StockScreenState extends State<StockScreen> {
                     Container(
                       margin: const EdgeInsets.only(top: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration( color: Colors.deepOrange.withOpacity(0.15), borderRadius: BorderRadius.circular(12), ),
-                      child: Text( (item['category'] ?? '').toString().replaceAll('_', ' '), style: const TextStyle(color: Colors.deepOrange, fontSize: 11, fontWeight: FontWeight.bold), ),
+                      decoration: BoxDecoration( color: AppTheme.primaryColor.withOpacity(0.15), borderRadius: BorderRadius.circular(12), ),
+                      child: Text( (item['category'] ?? '').toString().replaceAll('_', ' '), style: const TextStyle(color: AppTheme.primaryColor, fontSize: 11, fontWeight: FontWeight.bold), ),
                     ),
                   ],
                 ),
@@ -844,11 +830,11 @@ class _StockScreenState extends State<StockScreen> {
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeInOut,
                 decoration: BoxDecoration(
-                  color: isSelected ? Colors.deepOrange : const Color(0xFF353535),
+                  color: isSelected ? AppTheme.primaryColor : const Color(0xFF353535),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: isSelected ? Colors.deepOrange : Colors.grey.shade700, width: 2),
+                  border: Border.all(color: isSelected ? AppTheme.primaryColor : Colors.grey.shade700, width: 2),
                   boxShadow: isSelected
-                      ? [BoxShadow(color: Colors.deepOrange.withOpacity(0.18), blurRadius: 10, offset: const Offset(0, 2))]
+                      ? [BoxShadow(color: AppTheme.primaryColor.withOpacity(0.18), blurRadius: 10, offset: const Offset(0, 2))]
                       : [],
                 ),
                 child: InkWell(
@@ -882,24 +868,28 @@ class _StockScreenState extends State<StockScreen> {
       return Container(
         width: 420,
         padding: const EdgeInsets.all(0),
-        color: const Color(0xFF232323),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Padding(
-                  padding: EdgeInsets.only(left: 32, top: 24, bottom: 8),
-                  child: Text('Stoğum', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                Padding(
+                  padding: const EdgeInsets.only(left: 20, top: 20, bottom: 8),
+                  child: Text('Stoğum',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A),
+                    )),
                 ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white70),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
+                IconButton(
+                  icon: Icon(Icons.close_rounded,
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF94A3B8) : Colors.grey[600]),
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ],
             ),
@@ -911,7 +901,7 @@ class _StockScreenState extends State<StockScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepOrange,
+                  backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   padding: const EdgeInsets.symmetric(vertical: 16),
@@ -923,7 +913,7 @@ class _StockScreenState extends State<StockScreen> {
                   showDialog(
                     context: context,
                     builder: (dialogBuilderContext) => AlertDialog(
-                      backgroundColor: const Color(0xFF232323),
+                      backgroundColor: Theme.of(context).colorScheme.surface,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                       title: const Text('Yapay zekadan destek al', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       content: SingleChildScrollView(
@@ -1023,7 +1013,7 @@ class _StockScreenState extends State<StockScreen> {
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.of(dialogBuilderContext).pop(),
-                          child: const Text('Kapat', style: TextStyle(color: Colors.deepOrange)),
+                          child: const Text('Kapat', style: TextStyle(color: AppTheme.primaryColor)),
                         ),
                       ],
                     ),
@@ -1037,11 +1027,11 @@ class _StockScreenState extends State<StockScreen> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF232323),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF232323),
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
-        title: const Text('Stoğum', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Stoğum', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [
@@ -1052,7 +1042,7 @@ class _StockScreenState extends State<StockScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
             child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepOrange,
+                backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1064,7 +1054,7 @@ class _StockScreenState extends State<StockScreen> {
                 showDialog(
                   context: context,
                   builder: (dialogBuilderContext) => AlertDialog(
-                    backgroundColor: const Color(0xFF232323),
+                    backgroundColor: Theme.of(context).colorScheme.surface,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                     title: const Text('Yapay zekadan destek al', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     content: SingleChildScrollView(
@@ -1164,7 +1154,7 @@ class _StockScreenState extends State<StockScreen> {
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(dialogBuilderContext).pop(),
-                        child: const Text('Kapat', style: TextStyle(color: Colors.deepOrange)),
+                        child: const Text('Kapat', style: TextStyle(color: AppTheme.primaryColor)),
                       ),
                     ],
                   ),
@@ -1192,38 +1182,54 @@ class _HelpExpandableState extends State<_HelpExpandable> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final onSurface = scheme.onSurface;
+    final surface = scheme.surface;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF353535),
-            foregroundColor: Colors.white,
-            minimumSize: const Size(double.infinity, 44),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            elevation: 0,
+        Material(
+          color: surface,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => expanded = !expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Row(
+                children: [
+                  Text(widget.icon, style: const TextStyle(fontSize: 22)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: onSurface),
+                    ),
+                  ),
+                  Icon(expanded ? Icons.expand_less : Icons.expand_more, color: AppTheme.primaryColor),
+                ],
+              ),
+            ),
           ),
-          icon: Text(widget.icon, style: const TextStyle(fontSize: 22)),
-          label: Text(widget.label),
-          onPressed: () => setState(() => expanded = !expanded),
         ),
         if (expanded)
           ...widget.children.map((child) => Padding(
-                padding: const EdgeInsets.only(left: 24, top: 4, bottom: 4),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF232323),
-                    foregroundColor: Colors.white70,
-                    minimumSize: const Size(double.infinity, 38),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w400),
-                    elevation: 0,
+                padding: const EdgeInsets.only(left: 8, top: 6, bottom: 2),
+                child: Material(
+                  color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => widget.onPressed(child),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(child, style: TextStyle(fontSize: 14, color: onSurface, height: 1.35)),
+                      ),
+                    ),
                   ),
-                  onPressed: () {
-                    widget.onPressed(child);
-                  },
-                  child: Align(alignment: Alignment.centerLeft, child: Text(child)),
                 ),
               )),
       ],
@@ -1299,15 +1305,10 @@ class _HelpChatScreenState extends State<HelpChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF232323),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF2C2C2C),
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          'Yapay Zeka Destek',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-        ),
+        elevation: 0,
+        title: const Text('Yapay Zeka Destek'),
       ),
       body: Column(
         children: [
@@ -1358,7 +1359,7 @@ class _HelpChatScreenState extends State<HelpChatScreen> {
                           margin: const EdgeInsets.symmetric(vertical: 5.0),
                           padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
                           decoration: BoxDecoration(
-                            color: isUserMessage ? Colors.deepOrange : const Color(0xFF3A3A3A),
+                            color: isUserMessage ? AppTheme.primaryColor : const Color(0xFF3A3A3A),
                             borderRadius: BorderRadius.circular(16.0),
                           ),
                           child: Text(
@@ -1394,7 +1395,7 @@ class _HelpChatScreenState extends State<HelpChatScreen> {
                 ),
                 const SizedBox(width: 8.0),
                 Material(
-                  color: Colors.deepOrange,
+                  color: AppTheme.primaryColor,
                   borderRadius: BorderRadius.circular(25.0),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(25.0),
@@ -1412,4 +1413,238 @@ class _HelpChatScreenState extends State<HelpChatScreen> {
       ),
     );
   }
-} 
+}
+
+/// Tarif öneri sonucu + yeniden öneri (tema uyumlu).
+class _RecipeSuggestionDialog extends StatefulWidget {
+  final String title;
+  final String rawSuggestion;
+  final String mealKind;
+  final String apiKey;
+
+  const _RecipeSuggestionDialog({
+    required this.title,
+    required this.rawSuggestion,
+    required this.mealKind,
+    required this.apiKey,
+  });
+
+  @override
+  State<_RecipeSuggestionDialog> createState() => _RecipeSuggestionDialogState();
+}
+
+class _RecipeSuggestionDialogState extends State<_RecipeSuggestionDialog> {
+  late String _raw;
+  bool _loading = false;
+  String? _error;
+  final TextEditingController _wishController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _raw = widget.rawSuggestion;
+  }
+
+  @override
+  void dispose() {
+    _wishController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refine(String instruction) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final next = widget.mealKind == 'breakfast'
+          ? await AnalysisService.breakfastSuggestion(
+              userId: '',
+              recipeType: widget.apiKey,
+              userRefinement: instruction,
+            )
+          : await AnalysisService.dinnerSuggestion(
+              userId: '',
+              suggestionType: widget.apiKey,
+              userRefinement: instruction,
+            );
+      if (mounted) setState(() => _raw = next);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
+    final onBg = scheme.onSurface;
+    final muted = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final chipBg = isDark ? AppTheme.darkCardColor : const Color(0xFFF1F5F9);
+
+    return Dialog(
+      backgroundColor: scheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 12, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: TextStyle(
+                      color: onBg,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 17,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, color: muted),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
+          ),
+          Divider(color: scheme.outline.withValues(alpha: 0.25)),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(_error!, style: TextStyle(color: AppTheme.errorColor, fontSize: 13)),
+            ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Stack(
+                    children: [
+                      RecipeResultCard(key: ValueKey<String>(_raw), rawSuggestion: _raw),
+                      if (_loading)
+                        Positioned.fill(
+                          child: ColoredBox(
+                            color: scheme.surface.withValues(alpha: 0.72),
+                            child: const Center(child: CircularProgressIndicator()),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Beğenmediniz mi? İsterseniz hemen yeni bir öneri alın:',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: muted),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _RefineChip(
+                        label: 'Başka tarif',
+                        icon: Icons.refresh_rounded,
+                        bg: chipBg,
+                        onTap: _loading ? null : () => _refine(
+                              'Önceki öneriyi beğenmedim; aynı öğün tipinde tamamen farklı ve yaratıcı başka bir tarif öner.',
+                            ),
+                      ),
+                      _RefineChip(
+                        label: 'Tavuk kullanmadan',
+                        icon: Icons.set_meal_outlined,
+                        bg: chipBg,
+                        onTap: _loading
+                            ? null
+                            : () => _refine(
+                                  'Tavuk, hindi veya bunların ürünlerini kullanma; et kullanacaksan başka protein tercih et veya vejetaryen kal.',
+                                ),
+                      ),
+                      _RefineChip(
+                        label: 'Daha hafif',
+                        icon: Icons.spa_outlined,
+                        bg: chipBg,
+                        onTap: _loading
+                            ? null
+                            : () => _refine('Öncekinden daha hafif, daha az yağlı ve sindirimi kolay bir tarif öner.'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _wishController,
+                    style: TextStyle(color: onBg, fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Bugün özellikle ne yemek istiyorsunuz?',
+                      hintText: 'Örn: mercimek çorbası, fırın makarna…',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: chipBg,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            final t = _wishController.text.trim();
+                            if (t.isEmpty) return;
+                            _refine(
+                              'Kullanıcı bugün özellikle şunu yemek istiyor; mevcut stok ve öğün tipine uygun yeni bir tarif öner: $t',
+                            );
+                            _wishController.clear();
+                          },
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('Bu isteğe göre öner'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RefineChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color bg;
+  final VoidCallback? onTap;
+
+  const _RefineChip({
+    required this.label,
+    required this.icon,
+    required this.bg,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(fontWeight: FontWeight.w600, color: scheme.onSurface, fontSize: 13)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

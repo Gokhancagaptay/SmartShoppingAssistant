@@ -1,0 +1,14 @@
+{
+  "name": "smart-shopping-assistant",
+  "private": true,
+  "description": "Kökten çalıştırmak için kısayol scriptleri (frontend + API ayrı terminallerde).",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run start",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "npm --prefix frontend run test",
+    "test:backend": "npm --prefix backend run test",
+    "test:mobile": "npm --prefix market_mobile run test"
+  }
+}

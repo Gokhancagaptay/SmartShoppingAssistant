@@ -3,38 +3,41 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run"
   },
   "dependencies": {
-    "next": "14.0.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "firebase": "^10.5.0",
-    "@mui/material": "^5.14.20",
-    "@mui/icons-material": "^5.14.20",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
+    "@mui/icons-material": "^5.14.20",
+    "@mui/material": "^5.14.20",
+    "@mui/material-nextjs": "^9.0.0",
     "axios": "^1.6.2",
-    "react-query": "^3.39.3",
-    "react-hook-form": "^7.48.4",
-    "date-fns": "^2.30.0",
     "chart.js": "^4.4.0",
-    "react-chartjs-2": "^5.2.0",
+    "date-fns": "^2.30.0",
+    "firebase": "^10.5.0",
+    "next": "^16.2.4",
     "next-auth": "^4.24.5",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.48.4",
+    "react-query": "^3.39.3",
     "zustand": "^4.4.6"
   },
   "devDependencies": {
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
-    "typescript": "^5.3.2",
-    "eslint": "^8.54.0",
-    "eslint-config-next": "14.0.3",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^16.2.4",
+    "postcss": "^8.4.31",
     "prettier": "^3.1.0",
     "tailwindcss": "^3.3.5",
-    "postcss": "^8.4.31",
-    "autoprefixer": "^10.4.16"
+    "typescript": "^5.3.2",
+    "vitest": "^2.1.8"
   }
-} 
+}

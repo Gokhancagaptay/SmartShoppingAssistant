@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --brand-indigo: #6366f1;
+  --brand-indigo-soft: rgba(99, 102, 241, 0.35);
+  --brand-indigo-strong: rgba(99, 102, 241, 0.65);
+  --glass-bg: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand-indigo-soft: rgba(129, 140, 248, 0.45);
+    --brand-indigo-strong: rgba(129, 140, 248, 0.75);
+    --glass-bg: rgba(15, 23, 42, 0.45);
+    --glass-border: rgba(255, 255, 255, 0.1);
+  }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, var(--brand-indigo) 0%, #8b5cf6 100%);
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--brand-indigo) 0%, #8b5cf6 50%, #10b981 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.glass {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--brand-indigo-soft);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--brand-indigo-strong); }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px var(--brand-indigo-soft); }
+  50%       { box-shadow: 0 0 40px var(--brand-indigo-strong); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

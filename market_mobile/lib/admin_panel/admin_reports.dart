@@ -96,7 +96,7 @@ class _AdminReportsState extends State<AdminReports> {
         });
         
         // Ürünleri MongoDB'den yükle
-        final productsResponse = await http.get(Uri.parse('$baseUrl/products'));
+        final productsResponse = await http.get(Uri.parse('${getBaseUrl()}${ApiPaths.products}'));
         List<Map<String, dynamic>> productsList = [];
         
         if (productsResponse.statusCode == 200) {

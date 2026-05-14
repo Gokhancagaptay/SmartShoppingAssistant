@@ -11,35 +11,76 @@ logger = logging.getLogger(__name__)
 
 # Gemini yapılandırması
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
 
+# Model listesi — en yüksek ücretsiz kotaya sahip modeller önce denenir (2026 itibarıyla).
+# Gemini 2.5 Flash serisi en geniş ücretsiz kotaya sahiptir.
 MODELS = [
-    "gemini-1.5-pro",
-    "gemini-1.5-flash",
-    "gemini-2.0-flash"
+    "gemini-2.5-flash-preview-04-17",  # 2026 ücretsiz kota desteği olan en güncel model
+    "gemini-2.5-flash",                # Alternatif 2.5 flash endpoint
+    "gemini-2.0-flash-lite",           # Düşük maliyet, ücretsiz katman
+    "gemini-1.5-flash-8b",             # Küçük, yüksek kotalu model
+    "gemini-1.5-flash",                # Orta kota
+    "gemini-2.0-flash",                # Daha kısıtlı ücretsiz kota
+    "gemini-1.5-pro",                  # Düşük ücretsiz kota
 ]
 
+# Tüm modeller kota aşıldığında kullanıcıya gösterilecek açıklayıcı mesaj
+QUOTA_EXCEEDED_MESSAGE = (
+    "Günlük yapay zeka kotası doldu. "
+    "Gemini API ücretsiz katmanı günlük sınırına ulaşıldı. "
+    "Birkaç saat sonra tekrar deneyin veya Google AI Studio'dan yeni bir API anahtarı oluşturun: "
+    "https://aistudio.google.com/app/apikey"
+)
 
-def _try_models(data):
+
+def _try_models(data: dict) -> str:
+    """
+    MODELS listesindeki modelleri sırayla dener.
+    - 200: başarılı yanıt döner.
+    - 404: model mevcut değil, bir sonrakine geç.
+    - 429: kota aşıldı, bir sonrakine geç.
+    - Diğer hatalar: döngüyü kır ve hata mesajını döndür.
+    Tüm modeller 429 / 404 dönerse kullanıcı dostu Türkçe mesaj döner.
+    """
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
-    print(f"Gemini API Key: {GEMINI_API_KEY[:10]}...")  # API key'in ilk 10 karakterini göster
+    last_status = None
+    last_is_quota = False
+
     for model_id in MODELS:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
-        print(f"Denenen model: {model_id}")
-        print(f"İstek URL: {url}")
-        print(f"İstek verisi: {data}")
+        print(f"[GEMINI] Denenen model: {model_id}")
         response = requests.post(url, headers=headers, params=params, json=data)
-        print(f"API Yanıt Kodu: {response.status_code}")
-        print(f"API Yanıtı: {response.text}")
-        if response.status_code == 200:
+        last_status = response.status_code
+        print(f"[GEMINI] Yanıt kodu: {last_status}")
+
+        if last_status == 200:
             result = response.json()
             return result["candidates"][0]["content"]["parts"][0]["text"]
-        elif response.status_code not in [404, 429]:
-            # Diğer hatalarda döngüyü kır
-            return f"Hata: {response.status_code} - {response.text}"
-    # Eğer tüm modellerde 404 veya 429 dönerse son hatayı döndür
-    return f"Hata: {response.status_code} - {response.text}"
+
+        if last_status == 429:
+            # Kota aşıldı — bir sonraki modeli dene
+            last_is_quota = True
+            print(f"[GEMINI] {model_id} kotası doldu, sonraki model deneniyor...")
+            continue
+
+        if last_status in (404, 503):
+            # Model bulunamadı veya geçici olarak meşgul — bir sonraki modeli dene
+            print(f"[GEMINI] {model_id} yanıt vermedi ({last_status}), sonraki model deneniyor...")
+            continue
+
+        # Beklenmeyen hata — döngüyü durdur
+        return f"Hata: {last_status} - {response.text}"
+
+    # Tüm modeller başarısız oldu
+    if last_is_quota:
+        return QUOTA_EXCEEDED_MESSAGE
+    if last_status == 503:
+        return (
+            "Yapay zeka servisi şu an yoğun talep nedeniyle geçici olarak kullanılamıyor. "
+            "Lütfen birkaç dakika sonra tekrar deneyin."
+        )
+    return f"Tüm Gemini modelleri yanıt vermedi. Son durum kodu: {last_status}"
 
 
 def suggest_recipe(ingredients):
@@ -64,10 +105,41 @@ def analyze_recipe(ingredients):
     return _try_models(data)
 
 
-def suggest_breakfast_recipe(ingredients: str, recipe_type: str) -> str:
+def _build_dietary_constraint(dietary_preferences: str) -> str:
     """
-    Kahvaltı tarifi önerir
+    Diyet tercihleri varsa prompt'a eklenecek kısıt metnini oluşturur.
+    Tercih boşsa boş string döner.
     """
+    if not dietary_preferences or not dietary_preferences.strip():
+        return ""
+    return (
+        f"\n\nÖNEMLİ DİYET KISITLAMALARI: Kullanıcının diyet tercihleri şunlardır: {dietary_preferences.strip()}"
+        " Bu tercihlere kesinlikle uy. Uygun olmayan malzemeleri kullanan tarif önerme;"
+        " bunun yerine kısıtlamalara uyan alternatif bir tarif sun."
+    )
+
+
+def _user_refinement_block(user_refinement: str) -> str:
+    s = (user_refinement or "").strip()
+    if not s:
+        return ""
+    return (
+        f"\n\nEK KULLANICI TALİMATI (öncelikli uygula): {s}\n"
+        "Önceki bir öneri varsa ondan belirgin şekilde farklı bir tarif sun; aynı yemeği veya çok benzer bir kombinasyonu tekrarlama."
+    )
+
+
+def suggest_breakfast_recipe(
+    ingredients: str,
+    recipe_type: str,
+    dietary_preferences: str = "",
+    user_refinement: str = "",
+) -> str:
+    """
+    Kahvaltı tarifi önerir.
+    dietary_preferences: frontend'den gelen diyet bağlamı metni (opsiyonel)
+    """
+    diet_constraint = _build_dietary_constraint(dietary_preferences)
     prompt = ""
     if recipe_type == "quick":
         prompt = f"Bu ürünlerle pratik ve hızlı hazırlanabilecek bir kahvaltı öner: {ingredients}"
@@ -81,7 +153,9 @@ def suggest_breakfast_recipe(ingredients: str, recipe_type: str) -> str:
         prompt = f"Bu ürünlerle hafif ve sade bir kahvaltı tarifi öner: {ingredients}"
     elif recipe_type == "cold":
         prompt = f"Bu ürünlerle pişirme gerektirmeyen, soğuk servis edilen bir kahvaltı öner: {ingredients}"
-    
+    prompt += diet_constraint
+    prompt += _user_refinement_block(user_refinement)
+
     prompt += """
     Kurallar:
     1. Sadece verilen ürünleri kullan (tuz, yağ, baharat serbest)
@@ -144,7 +218,17 @@ def suggest_breakfast_recipe(ingredients: str, recipe_type: str) -> str:
     return _try_models(data)
 
 
-def suggest_dinner_recipe(ingredients, suggestion_type):
+def suggest_dinner_recipe(
+    ingredients: str,
+    suggestion_type: str,
+    dietary_preferences: str = "",
+    user_refinement: str = "",
+) -> str:
+    """
+    Akşam yemeği tarifi önerir.
+    dietary_preferences: frontend'den gelen diyet bağlamı metni (opsiyonel)
+    """
+    diet_constraint = _build_dietary_constraint(dietary_preferences)
     prompt = ""
     if suggestion_type == "quick":
         prompt = f"Bu ürünlerle pratik ve hızlı hazırlanabilecek bir akşam yemeği öner: {ingredients}"
@@ -158,7 +242,9 @@ def suggest_dinner_recipe(ingredients, suggestion_type):
         prompt = f"Bu ürünlerle çorba ağırlıklı bir akşam yemeği öner: {ingredients}"
     elif suggestion_type == "onepan":
         prompt = f"Bu ürünlerle tek kapta hazırlanabilecek bir akşam yemeği öner: {ingredients}"
-    
+    prompt += diet_constraint
+    prompt += _user_refinement_block(user_refinement)
+
     prompt += """
     Kurallar:
     1. Sadece verilen ürünleri kullan (tuz, yağ, baharat serbest)
@@ -347,24 +433,33 @@ def answer_custom_question(stock_items: List[str], question: str) -> str:
         return "Yanıt oluşturulamadı"
 
 
-def suggest_lunch_recipe(ingredients: str, recipe_type: str) -> str:
+def suggest_lunch_recipe(
+    ingredients: str,
+    recipe_type: str,
+    dietary_preferences: str = "",
+    user_refinement: str = "",
+) -> str:
     """
-    Öğle yemeği tarifi önerir
+    Öğle yemeği tarifi önerir.
+    dietary_preferences: frontend'den gelen diyet bağlamı metni (opsiyonel)
     """
+    diet_constraint = _build_dietary_constraint(dietary_preferences)
     prompt = ""
     if recipe_type == "quick":
         prompt = f"Bu ürünlerle pratik ve hızlı hazırlanabilecek bir öğle yemeği öner: {ingredients}"
-    elif recipe_type == "eggy":
-        prompt = f"Bu ürünlerle yumurtalı bir öğle yemeği tarifi öner: {ingredients}"
-    elif recipe_type == "breadless":
-        prompt = f"Bu ürünlerle ekmeksiz bir öğle yemeği tarifi öner: {ingredients}"
-    elif recipe_type == "sweet":
-        prompt = f"Bu ürünlerle tatlı ağırlıklı bir öğle yemeği tarifi öner: {ingredients}"
     elif recipe_type == "light":
         prompt = f"Bu ürünlerle hafif ve sade bir öğle yemeği tarifi öner: {ingredients}"
-    elif recipe_type == "cold":
-        prompt = f"Bu ürünlerle pişirme gerektirmeyen, soğuk servis edilen bir öğle yemeği öner: {ingredients}"
-    
+    elif recipe_type == "filling":
+        prompt = f"Bu ürünlerle doyurucu bir öğle yemeği tarifi öner: {ingredients}"
+    elif recipe_type == "salad":
+        prompt = f"Bu ürünlerle salata veya salata ağırlıklı bir öğle yemeği öner: {ingredients}"
+    elif recipe_type == "soup":
+        prompt = f"Bu ürünlerle çorba veya çorba ağırlıklı bir öğle yemeği öner: {ingredients}"
+    else:
+        prompt = f"Bu ürünlerle pratik bir öğle yemeği öner: {ingredients}"
+    prompt += diet_constraint
+    prompt += _user_refinement_block(user_refinement)
+
     prompt += """
     Kurallar:
     1. Sadece verilen ürünleri kullan (tuz, yağ, baharat serbest)

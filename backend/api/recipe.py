@@ -1,15 +1,32 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
 from typing import List, Literal
-from core.gemini_helper import suggest_recipe, analyze_recipe, suggest_breakfast_recipe, suggest_dinner_recipe, suggest_lunch_recipe
+from core.gemini_helper import (
+    suggest_recipe, analyze_recipe,
+    suggest_breakfast_recipe, suggest_dinner_recipe, suggest_lunch_recipe,
+    QUOTA_EXCEEDED_MESSAGE,
+)
 from database import get_stock_items
 from api.user import verify_token
 
-# Router'ı prefix olmadan tanımla
 router = APIRouter()
 
-# Debug için router oluşturulduğunda log yazdır
-print("🔧 Recipe router oluşturuldu")
+# Gemini'den dönen hata string'lerinin başlangıç kalıpları
+_GEMINI_ERROR_PREFIXES = ("Hata:", "Günlük yapay zeka", "Yapay zeka servisi", "Tüm Gemini")
+
+
+def _raise_if_gemini_error(text: str) -> None:
+    """
+    Gemini'den dönen metin bir hata mesajıysa uygun HTTP istisnası fırlatır.
+    Böylece frontend'e ham hata string'i yerine doğru HTTP durum kodu ulaşır.
+    """
+    if not text:
+        raise HTTPException(status_code=500, detail="Tarif önerisi oluşturulamadı.")
+    for prefix in _GEMINI_ERROR_PREFIXES:
+        if text.startswith(prefix):
+            # Kota veya servis hatası — 503 ile ilet
+            raise HTTPException(status_code=503, detail=text)
+
 
 class IngredientInput(BaseModel):
     ingredients: str
@@ -26,12 +43,18 @@ class CustomQuestionRequest(BaseModel):
 
 class DinnerSuggestionRequest(BaseModel):
     suggestion_type: Literal["quick", "medium", "long", "meatless", "soupy", "onepan"]
+    dietary_preferences: str = ""
+    user_refinement: str = ""
 
 class BreakfastSuggestionRequest(BaseModel):
     recipe_type: Literal["quick", "eggy", "breadless", "sweet", "light", "cold"]
+    dietary_preferences: str = ""
+    user_refinement: str = ""
 
 class LunchSuggestionRequest(BaseModel):
-    recipe_type: Literal["quick", "eggy", "breadless", "sweet", "light", "cold"]
+    lunch_type: Literal["quick", "light", "filling", "salad", "soup"]
+    dietary_preferences: str = ""
+    user_refinement: str = ""
 
 def extract_stock_names(stock_items):
     print("DEBUG - extract_stock_names gelen veri:", stock_items)
@@ -153,16 +176,12 @@ async def breakfast_suggestion(
         ingredients = ", ".join(stock_names)
         print(f"🧾 Gemini'ye gönderilecek malzemeler: {ingredients}")
         
-        # Gemini API'ye gönder
-        suggestion = suggest_breakfast_recipe(ingredients, request.recipe_type)
-        
-        if not suggestion:
-            raise HTTPException(
-                status_code=500,
-                detail="Tarif önerisi oluşturulamadı"
-            )
-        
-        print(f"✅ Kahvaltı önerisi başarıyla oluşturuldu")
+        # Gemini API'ye gönder (diyet tercihleri dahil)
+        suggestion = suggest_breakfast_recipe(
+            ingredients, request.recipe_type, request.dietary_preferences, request.user_refinement
+        )
+        _raise_if_gemini_error(suggestion)
+        print("[RECIPE] Kahvalti onerisi basariyla olusturuldu")
         return {"suggestion": suggestion}
         
     except HTTPException as he:
@@ -237,16 +256,12 @@ async def dinner_suggestion(
         ingredients = ", ".join(stock_names)
         print(f"🧾 Gemini'ye gönderilecek malzemeler: {ingredients}")
         
-        # Gemini API'ye gönder
-        suggestion = suggest_dinner_recipe(ingredients, request.suggestion_type)
-        
-        if not suggestion:
-            raise HTTPException(
-                status_code=500,
-                detail="Tarif önerisi oluşturulamadı"
-            )
-        
-        print(f"✅ Akşam yemeği önerisi başarıyla oluşturuldu")
+        # Gemini API'ye gönder (diyet tercihleri dahil)
+        suggestion = suggest_dinner_recipe(
+            ingredients, request.suggestion_type, request.dietary_preferences, request.user_refinement
+        )
+        _raise_if_gemini_error(suggestion)
+        print("[RECIPE] Aksam yemegi onerisi basariyla olusturuldu")
         return {"suggestion": suggestion}
         
     except HTTPException as he:
@@ -321,16 +336,12 @@ async def lunch_suggestion(
         ingredients = ", ".join(stock_names)
         print(f"🧾 Gemini'ye gönderilecek malzemeler: {ingredients}")
         
-        # Gemini API'ye gönder
-        suggestion = suggest_lunch_recipe(ingredients, request.recipe_type)
-        
-        if not suggestion:
-            raise HTTPException(
-                status_code=500,
-                detail="Tarif önerisi oluşturulamadı"
-            )
-        
-        print(f"✅ Öğle yemeği önerisi başarıyla oluşturuldu")
+        # Gemini API'ye gönder (diyet tercihleri dahil)
+        suggestion = suggest_lunch_recipe(
+            ingredients, request.lunch_type, request.dietary_preferences, request.user_refinement
+        )
+        _raise_if_gemini_error(suggestion)
+        print("[RECIPE] Ogle yemegi onerisi basariyla olusturuldu")
         return {"suggestion": suggestion}
         
     except HTTPException as he:

@@ -7,8 +7,6 @@ from api.user import verify_token
 
 router = APIRouter()
 
-print("🔧 Snack router oluşturuldu")
-
 class SnackRequest(BaseModel):
     snack_type: Literal["sweet", "salty", "no_cooking", "movie_night", "diet_friendly", "quick"]
 

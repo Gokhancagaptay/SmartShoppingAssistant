@@ -181,7 +181,6 @@ class CheckoutScreen extends StatelessWidget {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (context) => PaymentScreen(
-                            address: 'Seçilen Adres', // TODO: Adres seçimi eklenecek
                             cartItems: cart.items.values.map((item) => {
                               'name': item.name,
                               'qty': item.quantity,

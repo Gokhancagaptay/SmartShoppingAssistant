@@ -1,16 +1,13 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter'
-import { ThemeProvider } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import theme from '@/theme'
+import Providers from '@/components/Providers'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Online Market AI Assistant',
-  description: 'AI-powered online market assistant for smart shopping and nutrition tracking',
+  description: 'Yapay zeka destekli akıllı alışveriş asistanı — stok takibi, tarif önerileri ve beslenme analizi.',
 }
 
 export default function RootLayout({
@@ -19,15 +16,13 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="tr">
       <body className={inter.className}>
-        <AppRouterCacheProvider>
-          <ThemeProvider theme={theme}>
-            <CssBaseline />
-            {children}
-          </ThemeProvider>
-        </AppRouterCacheProvider>
+        {/* Providers: QueryClient + MUI AppRouterCache + AppThemeProvider + CssBaseline */}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   )
-} 
+}

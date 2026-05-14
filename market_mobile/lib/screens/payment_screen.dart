@@ -6,19 +6,29 @@ import '../providers/cart_provider.dart';
 import '../services/stock_service.dart';
 import '../services/order_service.dart';
 import '../models/order_model.dart';
+import '../constants/api_constants.dart';
+import '../theme/app_theme.dart';
+import 'address_list_screen.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 
 class PaymentScreen extends StatefulWidget {
+  /// Eski akış uyumluluğu; adres seçimi ekran içinde yapılır.
   final String address;
   final String? note;
   final List<Map<String, dynamic>> cartItems;
   final double totalAmount;
-  const PaymentScreen({Key? key, required this.address, this.note, this.cartItems = const [
-    {'name': 'Portakal', 'qty': 2, 'price': 35.0},
-    {'name': 'Elma', 'qty': 1, 'price': 28.0},
-  ], this.totalAmount = 98.0}) : super(key: key);
+  const PaymentScreen({
+    Key? key,
+    this.address = '',
+    this.note,
+    this.cartItems = const [
+      {'name': 'Portakal', 'qty': 2, 'price': 35.0},
+      {'name': 'Elma', 'qty': 1, 'price': 28.0},
+    ],
+    this.totalAmount = 98.0,
+  }) : super(key: key);
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -57,7 +67,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       setState(() { _isAddressLoading = false; });
       return;
     }
-    final url = (kIsWeb ? 'http://localhost:8000' : 'http://10.0.2.2:8000') + '/api/auth/users/$uid/addresses';
+    final url = '${getBaseUrl()}${ApiPaths.auth}/users/$uid/addresses';
     try {
       final response = await http.get(Uri.parse(url), headers: {'Authorization': 'Bearer $token'});
       if (response.statusCode == 200) {
@@ -98,13 +108,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final cartItems = cart.items.values.toList();
     final totalAmount = cart.totalAmount;
 
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = scheme.brightness == Brightness.dark;
+    final pageBg = isDark ? AppTheme.darkBackground : AppTheme.lightBackground;
+    final cardBg = isDark ? AppTheme.darkCardColor : AppTheme.lightSurface;
+    final onCard = isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A);
+    final muted = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final inputFill = isDark ? const Color(0xFF131929) : const Color(0xFFF1F5F9);
+    final borderColor = isDark ? AppTheme.darkBorder : const Color(0x1A000000);
+    final accent = AppTheme.primaryColor;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF232323),
+      backgroundColor: pageBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF232323),
+        backgroundColor: pageBg,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('Ödeme', style: TextStyle(color: Colors.white)),
+        surfaceTintColor: Colors.transparent,
+        iconTheme: IconThemeData(color: onCard),
+        title: Text('Ödeme', style: TextStyle(color: onCard, fontWeight: FontWeight.w700)),
         centerTitle: true,
       ),
       body: Center(
@@ -113,11 +134,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
             constraints: BoxConstraints(maxWidth: maxWidth),
             padding: EdgeInsets.all(cardPadding),
             decoration: BoxDecoration(
-              color: const Color(0xFF2E2E2E),
+              color: cardBg,
               borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: borderColor),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
+                  color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.06),
                   blurRadius: 32,
                   offset: const Offset(0, 8),
                 ),
@@ -127,36 +149,63 @@ class _PaymentScreenState extends State<PaymentScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Sipariş Özeti', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                Text('Sipariş Özeti', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 ...cartItems.map((item) => Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${item.name} x${item.quantity.toStringAsFixed(1)} ${item.unit}', style: TextStyle(color: Colors.white70, fontSize: fontSize-2)),
-                    Text('₺${(item.price * item.quantity).toStringAsFixed(2)}', style: TextStyle(color: Colors.white, fontSize: fontSize-2)),
+                    Text('${item.name} x${item.quantity.toStringAsFixed(1)} ${item.unit}', style: TextStyle(color: muted, fontSize: fontSize-2)),
+                    Text('₺${(item.price * item.quantity).toStringAsFixed(2)}', style: TextStyle(color: onCard, fontSize: fontSize-2)),
                   ],
                 )),
-                const Divider(color: Colors.white24, height: 28),
+                Divider(color: isDark ? Colors.white12 : Colors.black12, height: 28),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Toplam', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
-                    Text('₺${totalAmount.toStringAsFixed(2)}', style: TextStyle(color: Colors.orange, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                    Text('Toplam', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                    Text('₺${totalAmount.toStringAsFixed(2)}', style: TextStyle(color: accent, fontSize: fontSize, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 24),
-                Text('Teslimat Adresi', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                Text('Teslimat Adresi', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 _isAddressLoading
                   ? const Center(child: CircularProgressIndicator())
                   : (_addresses.isEmpty
-                    ? const Text('Adres bulunamadı', style: TextStyle(color: Colors.white70))
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            'Teslimat için kayıtlı bir adresiniz yok.',
+                            style: TextStyle(color: muted),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              await Navigator.push<void>(
+                                context,
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const AddressListScreen(inPanel: false),
+                                ),
+                              );
+                              if (context.mounted) await _fetchAddresses();
+                            },
+                            icon: Icon(Icons.add_location_alt_outlined, color: accent),
+                            label: Text('Yeni adres ekle', style: TextStyle(color: onCard)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: onCard,
+                              side: BorderSide(color: accent.withValues(alpha: 0.7)),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ],
+                      )
                     : DropdownButton<String>(
                         value: _selectedAddressId,
-                        dropdownColor: const Color(0xFF353535),
+                        dropdownColor: inputFill,
                         isExpanded: true,
-                        iconEnabledColor: Colors.white,
-                        style: TextStyle(color: Colors.white, fontSize: fontSize-2),
+                        iconEnabledColor: onCard,
+                        style: TextStyle(color: onCard, fontSize: fontSize-2),
                         items: _addresses.map((addr) {
                           final id = addr['id'] ?? addr['_id'];
                           return DropdownMenuItem<String>(
@@ -174,38 +223,39 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       )
                   ),
                 const SizedBox(height: 18),
-                Text('Sipariş Notu (isteğe bağlı)', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                Text('Sipariş Notu (isteğe bağlı)', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 TextField(
                   decoration: InputDecoration(
                     hintText: 'Siparişinizle ilgili not ekleyebilirsiniz...',
-                    hintStyle: TextStyle(color: Colors.white54),
+                    hintStyle: TextStyle(color: muted),
                     filled: true,
-                    fillColor: Color(0xFF353535),
+                    fillColor: inputFill,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
-                  style: TextStyle(color: Colors.white, fontSize: fontSize-2),
+                  style: TextStyle(color: onCard, fontSize: fontSize-2),
                   maxLines: 2,
                   onChanged: (val) => setState(() { _orderNote = val; }),
                 ),
                 const SizedBox(height: 18),
-                Text('Ödeme Seçeneği', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                Text('Ödeme Seçeneği', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
-                _buildPaymentOption('Kapıda Ödeme', Icons.payments),
+                _buildPaymentOption('Kapıda Ödeme', Icons.payments, onCard, muted, inputFill, accent),
                 const SizedBox(height: 14),
-                _buildPaymentOption('Kredi Kartı', Icons.credit_card),
+                _buildPaymentOption('Kredi Kartı', Icons.credit_card, onCard, muted, inputFill, accent),
                 const SizedBox(height: 18),
                 if (selectedPayment == 'Kredi Kartı') ...[
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF353535),
+                      color: inputFill,
                       borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: borderColor),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text('Kart Bilgileri', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                        Text('Kart Bilgileri', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _cardNoController,
@@ -214,13 +264,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                           decoration: InputDecoration(
                             labelText: 'Kart Numarası',
-                            labelStyle: TextStyle(color: Colors.white70),
+                            labelStyle: TextStyle(color: muted),
                             filled: true,
-                            fillColor: Color(0xFF2E2E2E),
+                            fillColor: cardBg,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                             counterText: '',
                           ),
-                          style: TextStyle(color: Colors.white, fontSize: fontSize-2),
+                          style: TextStyle(color: onCard, fontSize: fontSize-2),
                         ),
                         const SizedBox(height: 10),
                         Row(
@@ -232,13 +282,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 maxLength: 5,
                                 decoration: InputDecoration(
                                   labelText: 'AA/YY',
-                                  labelStyle: TextStyle(color: Colors.white70),
+                                  labelStyle: TextStyle(color: muted),
                                   filled: true,
-                                  fillColor: Color(0xFF2E2E2E),
+                                  fillColor: cardBg,
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                                   counterText: '',
                                 ),
-                                style: TextStyle(color: Colors.white, fontSize: fontSize-4),
+                                style: TextStyle(color: onCard, fontSize: fontSize-4),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -249,13 +299,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                 maxLength: 3,
                                 decoration: InputDecoration(
                                   labelText: 'CVV',
-                                  labelStyle: TextStyle(color: Colors.white70),
+                                  labelStyle: TextStyle(color: muted),
                                   filled: true,
-                                  fillColor: Color(0xFF2E2E2E),
+                                  fillColor: cardBg,
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                                   counterText: '',
                                 ),
-                                style: TextStyle(color: Colors.white, fontSize: fontSize-4),
+                                style: TextStyle(color: onCard, fontSize: fontSize-4),
                                 obscureText: true,
                               ),
                             ),
@@ -266,12 +316,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           controller: _cardNameController,
                           decoration: InputDecoration(
                             labelText: 'Kart Üzerindeki İsim',
-                            labelStyle: TextStyle(color: Colors.white70),
+                            labelStyle: TextStyle(color: muted),
                             filled: true,
-                            fillColor: Color(0xFF2E2E2E),
+                            fillColor: cardBg,
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                           ),
-                          style: TextStyle(color: Colors.white, fontSize: fontSize-2),
+                          style: TextStyle(color: onCard, fontSize: fontSize-2),
                         ),
                         const SizedBox(height: 8),
                         Row(
@@ -279,9 +329,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             Checkbox(
                               value: saveCard,
                               onChanged: (v) => setState(() => saveCard = v ?? false),
-                              activeColor: Colors.deepOrange,
+                              activeColor: accent,
                             ),
-                            const Text('Kartı kaydet', style: TextStyle(color: Colors.white70)),
+                            Text('Kartı kaydet', style: TextStyle(color: muted)),
                           ],
                         ),
                       ],
@@ -289,18 +339,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                   const SizedBox(height: 18),
                 ],
-                Text('Fatura Bilgisi (isteğe bağlı)', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+                Text('Fatura Bilgisi (isteğe bağlı)', style: TextStyle(color: onCard, fontSize: fontSize, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _invoiceController,
                   decoration: InputDecoration(
                     hintText: 'Fatura adresi veya firma bilgisi',
-                    hintStyle: TextStyle(color: Colors.white54),
+                    hintStyle: TextStyle(color: muted),
                     filled: true,
-                    fillColor: Color(0xFF353535),
+                    fillColor: inputFill,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
-                  style: TextStyle(color: Colors.white, fontSize: fontSize-2),
+                  style: TextStyle(color: onCard, fontSize: fontSize-2),
                 ),
                 const SizedBox(height: 18),
                 Row(
@@ -308,9 +358,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     Checkbox(
                       value: kvkkOk,
                       onChanged: (v) => setState(() => kvkkOk = v ?? false),
-                      activeColor: Colors.deepOrange,
+                      activeColor: accent,
                     ),
-                    Expanded(child: Text("KVKK Aydınlatma Metni'ni okudum, kabul ediyorum.", style: TextStyle(color: Colors.white70, fontSize: 14))),
+                    Expanded(child: Text("KVKK Aydınlatma Metni'ni okudum, kabul ediyorum.", style: TextStyle(color: muted, fontSize: 14))),
                   ],
                 ),
                 Row(
@@ -318,27 +368,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     Checkbox(
                       value: contractOk,
                       onChanged: (v) => setState(() => contractOk = v ?? false),
-                      activeColor: Colors.deepOrange,
+                      activeColor: accent,
                     ),
-                    Expanded(child: Text("Mesafeli Satış Sözleşmesi'ni okudum, kabul ediyorum.", style: TextStyle(color: Colors.white70, fontSize: 14))),
+                    Expanded(child: Text("Mesafeli Satış Sözleşmesi'ni okudum, kabul ediyorum.", style: TextStyle(color: muted, fontSize: 14))),
                   ],
                 ),
                 const SizedBox(height: 18),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.lock, color: Colors.greenAccent, size: 28),
+                    Icon(Icons.lock, color: AppTheme.successColor, size: 28),
                     const SizedBox(width: 8),
-                    const Text('Güvenli SSL ile ödeme', style: TextStyle(color: Colors.white70)),
+                    Text('Güvenli SSL ile ödeme', style: TextStyle(color: muted)),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.support_agent, color: Colors.blueAccent, size: 24),
+                    Icon(Icons.support_agent, color: accent, size: 24),
                     const SizedBox(width: 6),
-                    const Text('Destek: 0850 000 00 00', style: TextStyle(color: Colors.white54)),
+                    Text('Destek: 0850 000 00 00', style: TextStyle(color: muted.withValues(alpha: 0.85))),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -430,7 +480,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       }
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepOrange,
+                      backgroundColor: accent,
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(22),
                       ),
@@ -448,7 +499,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _buildPaymentOption(String title, IconData icon) {
+  Widget _buildPaymentOption(String title, IconData icon, Color onCard, Color muted, Color inputFill, Color accent) {
     final isSelected = selectedPayment == title;
     return GestureDetector(
       onTap: () {
@@ -459,22 +510,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.deepOrange.withOpacity(0.15) : const Color(0xFF353535),
+          color: isSelected ? accent.withValues(alpha: 0.12) : inputFill,
           borderRadius: BorderRadius.circular(18),
-          border: isSelected ? Border.all(color: Colors.deepOrange, width: 2) : null,
+          border: isSelected ? Border.all(color: accent, width: 2) : Border.all(color: muted.withValues(alpha: 0.25)),
         ),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white, size: 28),
+            Icon(icon, color: onCard, size: 28),
             const SizedBox(width: 16),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w500),
+                style: TextStyle(color: onCard, fontSize: 20, fontWeight: FontWeight.w500),
               ),
             ),
             if (isSelected)
-              const Icon(Icons.check_circle, color: Colors.deepOrange, size: 28),
+              Icon(Icons.check_circle, color: accent, size: 28),
           ],
         ),
       ),
