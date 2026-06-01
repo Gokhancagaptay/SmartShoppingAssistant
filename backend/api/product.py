@@ -21,6 +21,7 @@ class ProductBase(BaseModel):
     stock: int = Field(..., ge=0)
     image_url: str
     category: str = Field(..., min_length=1)
+    unit: Optional[str] = None
 
 
 class ProductCreate(ProductBase):
@@ -62,7 +63,7 @@ async def create_product(product_data: ProductCreate, current_user: dict = Depen
         result = await products_collection.insert_one(product_dict)
         created_product = await products_collection.find_one({"_id": result.inserted_id})
         if created_product:
-            return ProductResponse(**created_product)
+            return ProductResponse.model_validate(created_product)
         raise HTTPException(status_code=500, detail="Ürün oluşturuldu ancak getirilemedi.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ürün eklenirken bir hata oluştu: {str(e)}")
@@ -82,7 +83,7 @@ async def list_products(
     try:
         cursor = products_collection.find(query)
         raw = await cursor.to_list(length=None)
-        return [ProductResponse(**p) for p in raw]
+        return [ProductResponse.model_validate(p) for p in raw]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ürünler listelenirken bir hata oluştu: {str(e)}")
 
@@ -115,7 +116,7 @@ async def get_product_by_id(product_id: str = Path(..., description="Getirilecek
     db_id = validate_object_id(product_id)
     product = await products_collection.find_one({"_id": db_id})
     if product:
-        return ProductResponse(**product)
+        return ProductResponse.model_validate(product)
     raise HTTPException(status_code=404, detail=f"'{product_id}' ID'li ürün bulunamadı.")
 
 
@@ -149,7 +150,7 @@ async def update_product(
 
     updated_product = await products_collection.find_one({"_id": db_id})
     if updated_product:
-        return ProductResponse(**updated_product)
+        return ProductResponse.model_validate(updated_product)
     raise HTTPException(status_code=500, detail="Ürün güncellendi ancak getirilemedi.")
 
 

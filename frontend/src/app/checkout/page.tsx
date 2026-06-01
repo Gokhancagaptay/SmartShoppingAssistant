@@ -75,7 +75,7 @@ export default function CheckoutPage() {
 
   // ── Kart state ──
   const [savedCards, setSavedCards] = useState<SavedCard[]>([])
-  const [selectedCardId, setSelectedCardId] = useState<string | 'new' | 'cash'>('new')
+  const [selectedCardId, setSelectedCardId] = useState<string | 'cash'>('cash')
   const [cardDialogOpen, setCardDialogOpen] = useState(false)
   const [cardForm, setCardForm] = useState(emptyCard)
   const [cardFormError, setCardFormError] = useState<string | null>(null)
@@ -227,8 +227,8 @@ export default function CheckoutPage() {
       setOrderError('Lütfen önce bir teslimat adresi ekleyin.')
       return
     }
-    if (selectedCardId === 'new') {
-      setOrderError('Lütfen bir ödeme yöntemi seçin veya yeni kart ekleyin.')
+    if (!selectedCardId) {
+      setOrderError('Lütfen bir ödeme yöntemi seçin.')
       return
     }
 
@@ -396,21 +396,6 @@ export default function CheckoutPage() {
                   ))}
 
                   {savedCards.length > 0 && <Divider />}
-
-                  {/* Yeni kart gir (inline) */}
-                  <Box
-                    sx={{ display:'flex', alignItems:'center', px:2.5, py:1.75, cursor:'pointer', transition:'background 0.15s', '&:hover':{ bgcolor:'action.hover' } }}
-                    onClick={() => setSelectedCardId('new')}
-                  >
-                    <Radio value="new" size="small" sx={{ mr:1, p:0.5 }} />
-                    <AddIcon fontSize="small" sx={{ mr:1.5, color:'text.secondary' }} />
-                    <Typography variant="body2" fontWeight={600} color="text.secondary">Yeni kart ekle</Typography>
-                    {selectedCardId === 'new' && (
-                      <Chip label="Seçildi" size="small" sx={{ ml:'auto', height:18, fontSize:10, bgcolor:'primary.main', color:'white' }} />
-                    )}
-                  </Box>
-
-                  <Divider />
 
                   {/* Kapıda ödeme */}
                   <Box
