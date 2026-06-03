@@ -33,7 +33,7 @@ firebase_admin.initialize_app(
     {
         "databaseURL": os.getenv(
             "FIREBASE_DATABASE_URL",
-            "https://onlinemarket-49d8b-default-rtdb.europe-west1.firebasedatabase.app",
+            "https://market-b596e-default-rtdb.europe-west1.firebasedatabase.app",
         )
     },
 )

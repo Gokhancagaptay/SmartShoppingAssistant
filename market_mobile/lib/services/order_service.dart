@@ -9,7 +9,7 @@ class OrderService {
   final FirebaseDatabase _database = FirebaseDatabase.instance;
   
   // Firebase Realtime Database URL (Firebase konsol ayarlarından alınmalı)
-  final String _firebaseDbUrl = "https://marketonline44-default-rtdb.firebaseio.com";
+  final String _firebaseDbUrl = "https://market-b596e-default-rtdb.europe-west1.firebasedatabase.app";
   
   // Firebase bağlantı durumunu test eden yardımcı metot
   Future<bool> checkConnection() async {

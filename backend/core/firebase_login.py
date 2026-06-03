@@ -15,7 +15,7 @@ try:
     if not firebase_admin._apps:
         cred = credentials.Certificate(FIREBASE_CREDENTIALS)
         firebase_admin.initialize_app(cred, {
-            "databaseURL": "https://marketonline44-default-rtdb.firebaseio.com"
+            "databaseURL": os.getenv("FIREBASE_DATABASE_URL")
         })
         print("✅ Firebase başarıyla başlatıldı")
     else:
