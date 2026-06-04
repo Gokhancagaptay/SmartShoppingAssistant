@@ -85,6 +85,9 @@ export default function CheckoutPage() {
   const [orderError, setOrderError] = useState<string | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
 
+  // ── Mevcut kullanıcı UID ──
+  const [currentUid, setCurrentUid] = useState<string | null>(null)
+
   const shipping = shippingFeeTl(totalPrice)
   const total = totalPrice + shipping
 
@@ -94,37 +97,40 @@ export default function CheckoutPage() {
     return a.currentUser?.getIdToken() ?? null
   }, [])
 
-  // ── Kayıtlı adresleri yükle ──
+  const cardsStorageKey = (uid: string) => `market_ai_cards_${uid}`
+
+  // ── Kayıtlı adresleri ve kartları kullanıcıya özel yükle ──
   useEffect(() => {
     const load = async () => {
       try {
         const a = getAuth(app)
         const u = a.currentUser
         if (!u) return
+        setCurrentUid(u.uid)
         const t = await u.getIdToken()
+
+        // Adresler — API'den, uid'e göre (güvenli)
         const r = await axios.get(`/api/auth/users/${u.uid}/saved-addresses`, { headers:{ Authorization:`Bearer ${t}` } })
         const list: SavedAddress[] = Array.isArray(r.data) ? r.data : []
         setSavedAddresses(list)
         if (list.length > 0) setSelectedAddressId(list[0].id)
+
+        // Kartlar — localStorage'dan, uid'e özel key ile
+        const raw = localStorage.getItem(cardsStorageKey(u.uid))
+        if (raw) {
+          const cards: SavedCard[] = JSON.parse(raw)
+          setSavedCards(cards)
+          if (cards.length > 0) setSelectedCardId(cards[0].id)
+        }
       } catch { /* sessizce başarısız */ }
     }
     load()
   }, [])
 
-  // ── Kayıtlı kartları localStorage'dan yükle ──
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('market_ai_cards')
-      if (raw) {
-        const cards: SavedCard[] = JSON.parse(raw)
-        setSavedCards(cards)
-        if (cards.length > 0) setSelectedCardId(cards[0].id)
-      }
-    } catch { /* */ }
-  }, [])
-
   const saveCardsToStorage = (cards: SavedCard[]) => {
-    localStorage.setItem('market_ai_cards', JSON.stringify(cards))
+    if (currentUid) {
+      localStorage.setItem(cardsStorageKey(currentUid), JSON.stringify(cards))
+    }
     setSavedCards(cards)
   }
 

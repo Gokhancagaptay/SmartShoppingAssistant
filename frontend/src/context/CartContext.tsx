@@ -1,6 +1,8 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
+import { app } from '@/lib/firebase'
 
 export interface CartItem {
   id: string
@@ -36,30 +38,41 @@ export function useCart() {
   return useContext(CartContext)
 }
 
-const STORAGE_KEY = 'market_ai_cart'
+const storageKey = (uid: string) => `market_ai_cart_${uid}`
 
-/** Sepet state'ini yöneten ve localStorage'a kaydeden global provider */
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
+  const [uid, setUid] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
 
-  // Sayfa yüklenince localStorage'dan sepeti yükle
+  // Auth state değişince doğru kullanıcının sepetini yükle
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) setItems(JSON.parse(saved))
-    } catch {
-      // Bozuk veri varsa sıfırla
-    }
-    setHydrated(true)
+    const auth = getAuth(app)
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUid(user.uid)
+        try {
+          const saved = localStorage.getItem(storageKey(user.uid))
+          setItems(saved ? JSON.parse(saved) : [])
+        } catch {
+          setItems([])
+        }
+      } else {
+        // Kullanıcı çıkış yaptı — sepeti temizle
+        setUid(null)
+        setItems([])
+      }
+      setHydrated(true)
+    })
+    return () => unsub()
   }, [])
 
-  // Sepet değişince localStorage'a kaydet
+  // Sepet değişince localStorage'a kullanıcıya özel key ile kaydet
   useEffect(() => {
-    if (hydrated) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
+    if (hydrated && uid) {
+      localStorage.setItem(storageKey(uid), JSON.stringify(items))
     }
-  }, [items, hydrated])
+  }, [items, hydrated, uid])
 
   const addItem = useCallback((newItem: Omit<CartItem, 'quantity'>) => {
     setItems((prev) => {

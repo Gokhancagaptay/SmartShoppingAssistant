@@ -53,6 +53,7 @@ app = FastAPI(
     description="Online Market Projesi için FastAPI backend",
     version="1.0.0",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 cors_origins, cors_credentials = parse_cors_settings()

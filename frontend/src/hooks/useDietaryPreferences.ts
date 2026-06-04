@@ -43,7 +43,7 @@ export function useDietaryPreferences() {
     try {
       const token = await user.getIdToken()
       const { data } = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/users/${user.uid}/dietary-preferences`,
+        `/api/auth/users/${user.uid}/dietary-preferences`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
       const prefs: DietaryPreferences = {
@@ -70,7 +70,7 @@ export function useDietaryPreferences() {
     try {
       const token = await user.getIdToken()
       await axios.put(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/users/${user.uid}/dietary-preferences`,
+        `/api/auth/users/${user.uid}/dietary-preferences`,
         prefs,
         { headers: { Authorization: `Bearer ${token}` } }
       )

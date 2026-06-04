@@ -69,8 +69,7 @@ async def create_product(product_data: ProductCreate, current_user: dict = Depen
         raise HTTPException(status_code=500, detail=f"Ürün eklenirken bir hata oluştu: {str(e)}")
 
 
-@router.get("/", summary="Tüm Ürünleri Listele (Arama ve Filtre ile)", response_model=List[ProductResponse])
-async def list_products(
+async def _list_products(
     search: Optional[str] = Query(None, description="Ürün adında arama yap"),
     category: Optional[str] = Query(None, description="Kategoriye göre filtrele"),
 ):
@@ -86,6 +85,22 @@ async def list_products(
         return [ProductResponse.model_validate(p) for p in raw]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ürünler listelenirken bir hata oluştu: {str(e)}")
+
+
+@router.get("", summary="Tüm Ürünleri Listele (Arama ve Filtre ile)", response_model=List[ProductResponse])
+async def list_products(
+    search: Optional[str] = Query(None, description="Ürün adında arama yap"),
+    category: Optional[str] = Query(None, description="Kategoriye göre filtrele"),
+):
+    return await _list_products(search, category)
+
+
+@router.get("/", summary="Tüm Ürünleri Listele (Arama ve Filtre ile)", response_model=List[ProductResponse])
+async def list_products_slash(
+    search: Optional[str] = Query(None, description="Ürün adında arama yap"),
+    category: Optional[str] = Query(None, description="Kategoriye göre filtrele"),
+):
+    return await _list_products(search, category)
 
 
 @router.get("/categories", summary="Tüm Ürün Kategorilerini Listele", response_model=List[str])

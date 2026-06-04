@@ -301,7 +301,7 @@ function MealSection({ meal, dietaryContext, visible }: MealSectionProps) {
       if (!user) throw new Error('Giriş yapmanız gerekiyor')
       const token = await user.getIdToken()
       const { data } = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/users/${user.uid}/stock/deduct-recipe`,
+        `/api/auth/users/${user.uid}/stock/deduct-recipe`,
         { ingredients: parsed.ingredientsForOne, servings },
         { headers: { Authorization: `Bearer ${token}` } }
       )
