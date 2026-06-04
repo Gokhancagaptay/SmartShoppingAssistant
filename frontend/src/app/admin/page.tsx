@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Container, Box, Typography, Grid, Card, Tab, Tabs, Chip, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -18,7 +18,7 @@ import {
 } from '@mui/icons-material'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import axios from 'axios'
-import { getAuth } from 'firebase/auth'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { app } from '@/lib/firebase'
 import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
@@ -110,14 +110,21 @@ export default function AdminPage() {
   const [productSearch, setProductSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
 
-  // ── Rol kontrolü ──
+  // ── Firebase auth hazır mı? ──
+  const [authReady, setAuthReady] = useState(false)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(getAuth(app), () => setAuthReady(true))
+    return () => unsub()
+  }, [])
+
+  // ── Rol kontrolü — sadece auth hazır olunca çalış ──
   const { data: me, isLoading: meLoading } = useQuery('admin-me', async () => {
     const headers = await getAuthHeader()
     const res = await axios.get('/api/auth/me', { headers })
     return res.data
-  }, { retry: false })
+  }, { retry: false, enabled: authReady })
 
-  if (meLoading) {
+  if (!authReady || meLoading) {
     return (
       <AuthGuard>
         <MainLayout>
