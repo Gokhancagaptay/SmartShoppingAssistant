@@ -3,8 +3,18 @@ import firebase_admin
 from firebase_admin import db, auth
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, validator
+from api.user import verify_token
 
 router = APIRouter()
+
+
+def require_admin(user_data=Depends(verify_token)):
+    """Sadece admin rolüne sahip kullanıcılara izin verir."""
+    user, role = user_data
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem için admin yetkisi gerekli.")
+    return user_data
+
 
 # Model for updating user role (admin.py içine taşındı)
 class UserRoleUpdate(BaseModel):
@@ -15,7 +25,7 @@ class UserRoleUpdate(BaseModel):
 # ancak db referansını almak için firebase_admin import edilmeli.
 
 @router.get("/dashboard/stats", summary="Admin Dashboard İstatistikleri")
-async def get_dashboard_stats():
+async def get_dashboard_stats(_: tuple = Depends(require_admin)):
     try:
         orders_ref = db.reference('/orders')
         users_ref = db.reference('/users') # Kullanıcılar için referans eklendi
@@ -63,7 +73,7 @@ async def get_dashboard_stats():
 # === Kullanıcı Yönetimi Endpointleri ===
 
 @router.get("/users", summary="Tüm Kullanıcıları Listele")
-async def list_users():
+async def list_users(_: tuple = Depends(require_admin)):
     users_list = []
     try:
         for user_record in auth.list_users().iterate_all():
@@ -94,19 +104,17 @@ async def list_users():
         raise HTTPException(status_code=500, detail=f"Kullanıcılar listelenemedi: {str(e)}")
 
 @router.put("/users/{user_id}/role", summary="Kullanıcı Rolünü Güncelle")
-async def update_user_role(user_id: str, role_update: UserRoleUpdate = Body(...)):
+async def update_user_role(user_id: str, role_update: UserRoleUpdate = Body(...), _: tuple = Depends(require_admin)):
     try:
         user_ref = db.reference(f'/users/{user_id}')
         user_snapshot = user_ref.get()
         if not user_snapshot:
-            # Kullanıcı RTDB'de yoksa oluşturabiliriz (isteğe bağlı) veya hata dönebiliriz.
-            # Şimdilik, en azından bir kayıt olması beklentisiyle hata dönüyoruz.
-            # Eğer kullanıcı login olurken RTDB'de otomatik oluşturuluyorsa bu sorun olmaz.
-            # auth.get_user(user_id) # Auth tarafında varlığını kontrol edebiliriz.
-            raise HTTPException(status_code=404, detail=f"Kullanıcı {user_id} RTDB'de bulunamadı. Rol güncellemesi için önce RTDB'de bir kaydı olmalı.")
+            raise HTTPException(status_code=404, detail=f"Kullanıcı {user_id} RTDB'de bulunamadı.")
 
+        # RTDB ve Firebase custom claims her ikisini birden güncelle
         user_ref.update({"role": role_update.role})
-        print(f"Kullanıcı {user_id} rolü {role_update.role} olarak güncellendi.")
+        auth.set_custom_user_claims(user_id, {"role": role_update.role})
+        print(f"Kullanıcı {user_id} rolü {role_update.role} olarak güncellendi (RTDB + custom claims).")
         return {"message": f"Kullanıcı {user_id} rolü başarıyla {role_update.role} olarak güncellendi"}
     except auth.UserNotFoundError:
         raise HTTPException(status_code=404, detail=f"Firebase Auth'da {user_id} ID'li kullanıcı bulunamadı.")
@@ -115,7 +123,7 @@ async def update_user_role(user_id: str, role_update: UserRoleUpdate = Body(...)
         raise HTTPException(status_code=500, detail=f"Kullanıcı rolü güncellenemedi: {str(e)}")
 
 @router.delete("/users/{user_id}", summary="Kullanıcıyı Sil")
-async def delete_user_account(user_id: str):
+async def delete_user_account(user_id: str, _: tuple = Depends(require_admin)):
     try:
         auth.delete_user(user_id)
         print(f"Kullanıcı {user_id} Firebase Auth'dan silindi.")
@@ -148,7 +156,7 @@ async def delete_user_account(user_id: str):
         raise HTTPException(status_code=500, detail=f"Kullanıcı silinemedi: {str(e)}")
 
 @router.put("/users/{user_id}/disable", summary="Kullanıcıyı Devre Dışı Bırak")
-async def disable_user(user_id: str):
+async def disable_user(user_id: str, _: tuple = Depends(require_admin)):
     try:
         auth.update_user(user_id, disabled=True)
         return {"message": f"Kullanıcı {user_id} başarıyla devre dışı bırakıldı."}
@@ -158,7 +166,7 @@ async def disable_user(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/users/{user_id}/enable", summary="Kullanıcıyı Etkinleştir")
-async def enable_user(user_id: str):
+async def enable_user(user_id: str, _: tuple = Depends(require_admin)):
     try:
         auth.update_user(user_id, disabled=False)
         return {"message": f"Kullanıcı {user_id} başarıyla etkinleştirildi."}
@@ -214,7 +222,7 @@ class AdminOrderResponse(BaseModel):
     address: Optional[OrderAddressDetail] = None
 
 @router.get("/orders", summary="Tüm Siparişleri Listele (Admin)", response_model=List[AdminOrderResponse])
-async def list_all_orders(status: Optional[str] = None):
+async def list_all_orders(status: Optional[str] = None, _: tuple = Depends(require_admin)):
     all_orders_list = []
     try:
         orders_root_ref = db.reference('/orders')
@@ -296,7 +304,8 @@ async def list_all_orders(status: Optional[str] = None):
 async def update_order_status_admin(
     customer_user_id: str,
     firebase_order_id: str,
-    status_update: dict = Body(...)
+    status_update: dict = Body(...),
+    _: tuple = Depends(require_admin),
 ): # Request body'den { "status": "yeni_durum" } bekleniyor
     new_status = status_update.get("status")
     if not new_status:

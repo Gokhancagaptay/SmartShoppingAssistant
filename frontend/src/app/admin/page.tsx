@@ -110,9 +110,43 @@ export default function AdminPage() {
   const [productSearch, setProductSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
 
+  // ── Rol kontrolü ──
+  const { data: me, isLoading: meLoading } = useQuery('admin-me', async () => {
+    const headers = await getAuthHeader()
+    const res = await axios.get('/api/auth/me', { headers })
+    return res.data
+  }, { retry: false })
+
+  if (meLoading) {
+    return (
+      <AuthGuard>
+        <MainLayout>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+            <CircularProgress />
+          </Box>
+        </MainLayout>
+      </AuthGuard>
+    )
+  }
+
+  if (me?.role !== 'admin') {
+    return (
+      <AuthGuard>
+        <MainLayout>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 2 }}>
+            <AdminIcon sx={{ fontSize: 64, color: 'error.main', opacity: 0.5 }} />
+            <Typography variant="h5" fontWeight={700} color="error">Erişim Reddedildi</Typography>
+            <Typography color="text.secondary">Bu sayfaya erişmek için admin yetkisi gereklidir.</Typography>
+          </Box>
+        </MainLayout>
+      </AuthGuard>
+    )
+  }
+
   // ── Queries ──
   const { data: stats } = useQuery('admin-stats', async () => {
-    const res = await axios.get('/api/admin/dashboard/stats')
+    const headers = await getAuthHeader()
+    const res = await axios.get('/api/admin/dashboard/stats', { headers })
     return res.data
   })
 
