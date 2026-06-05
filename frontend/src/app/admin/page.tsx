@@ -269,7 +269,7 @@ export default function AdminPage() {
   const isMutating = createProduct.isLoading || updateProduct.isLoading
 
   return (
-    <AuthGuard adminOnly>
+    <AuthGuard>
       <MainLayout>
         <Container maxWidth="xl" sx={{ pb: 6 }}>
 

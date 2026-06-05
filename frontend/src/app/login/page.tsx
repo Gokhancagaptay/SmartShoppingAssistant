@@ -13,6 +13,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'
 import { app } from '@/lib/firebase'
+import axios from 'axios'
 
 const FIREBASE_ERRORS: Record<string, string> = {
   'auth/user-not-found': 'Bu e-posta ile kayıtlı kullanıcı bulunamadı.',
@@ -40,8 +41,18 @@ export default function LoginPage() {
     setIsLoading(true)
     setError(null)
     try {
-      await signInWithEmailAndPassword(getAuth(app), email, password)
-      router.push('/')
+      const credential = await signInWithEmailAndPassword(getAuth(app), email, password)
+      const token = await credential.user.getIdToken()
+      let redirectTo = '/'
+      try {
+        const { data } = await axios.get('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (data?.role === 'admin') redirectTo = '/admin'
+      } catch {
+        // role fetch başarısız olursa normal home'a git
+      }
+      router.push(redirectTo)
     } catch (err: any) {
       setError(FIREBASE_ERRORS[err.code] || 'Giriş yapılırken bir hata oluştu.')
     } finally {
