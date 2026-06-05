@@ -42,7 +42,7 @@ export default function LoginPage() {
     setError(null)
     try {
       const credential = await signInWithEmailAndPassword(getAuth(app), email, password)
-      const token = await credential.user.getIdToken()
+      const token = await credential.user.getIdToken(true)
       let redirectTo = '/'
       try {
         const { data } = await axios.get('/api/auth/me', {

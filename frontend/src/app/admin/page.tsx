@@ -51,7 +51,7 @@ const emptyForm = { name: '', price: '', stock: '', image_url: '', category: 'me
 async function getAuthHeader() {
   const user = getAuth(app).currentUser
   if (!user) throw new Error('Oturum açılmamış')
-  const token = await user.getIdToken()
+  const token = await user.getIdToken(true)
   return { Authorization: `Bearer ${token}` }
 }
 
@@ -110,21 +110,21 @@ export default function AdminPage() {
   const [productSearch, setProductSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
 
-  // ── Firebase auth hazır mı? ──
-  const [authReady, setAuthReady] = useState(false)
+  // ── Firebase auth: undefined=henüz yok, null=çıkış yapıldı, User=giriş yapıldı ──
+  const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null | undefined>(undefined)
   useEffect(() => {
-    const unsub = onAuthStateChanged(getAuth(app), () => setAuthReady(true))
+    const unsub = onAuthStateChanged(getAuth(app), (user) => setFirebaseUser(user))
     return () => unsub()
   }, [])
 
-  // ── Rol kontrolü — sadece auth hazır olunca çalış ──
+  // ── Rol kontrolü — sadece gerçek user varsa çalış ──
   const { data: me, isLoading: meLoading } = useQuery('admin-me', async () => {
     const headers = await getAuthHeader()
     const res = await axios.get('/api/auth/me', { headers })
     return res.data
-  }, { retry: false, enabled: authReady })
+  }, { retry: false, enabled: !!firebaseUser })
 
-  if (!authReady || meLoading) {
+  if (firebaseUser === undefined || meLoading) {
     return (
       <AuthGuard>
         <MainLayout>

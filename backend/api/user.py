@@ -56,6 +56,16 @@ def _normalize_dietary_prefs(data) -> dict:
         note = str(note)
     return {"tags": tags, "custom_note": note}
 
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token
+    except Exception as e:
+        print(f"[AUTH ERROR] {type(e).__name__}: {e}")
+        raise HTTPException(status_code=401, detail=f"Geçersiz token: {type(e).__name__}")
+
+
 class UserRegister(BaseModel):
     email: str
     password: str
@@ -197,18 +207,21 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 # 🔹 Kullanıcı bilgilerini getirme
 @router.get("/me", summary="Kullanıcı Bilgilerini Getir")
-def get_user_info(user_data=Depends(verify_token)):
+async def get_user_info(current_user: dict = Depends(get_current_user)):
     try:
-        user, role = user_data
+        uid = current_user["uid"]
+        user_data = db.reference(f"users/{uid}").get() or {}
+        role = user_data.get("role", "user")
+        print(f"[ME] uid={uid} rtdb_role={role} rtdb_keys={list(user_data.keys())}")
         return {
-            "email": user.get("email"),
-            "name": user.get("name"),
-            "surname": user.get("surname"),
-            "phone": user.get("phone"),
+            "email": current_user.get("email"),
+            "name": user_data.get("name"),
+            "surname": user_data.get("surname"),
+            "phone": user_data.get("phone"),
             "role": role
         }
     except Exception as e:
-        print(f"Kullanıcı bilgileri alma hatası: {str(e)}")  # Debug için
+        print(f"Kullanıcı bilgileri alma hatası: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Kullanıcı bilgileri alınamadı: {str(e)}")
 
 # 🔹 Kullanıcı profil güncelleme
@@ -330,14 +343,6 @@ def delete_address(user_id: str, address_id: str):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Adres silinemedi: {str(e)}")
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        token = credentials.credentials
-        decoded_token = auth.verify_id_token(token)
-        return decoded_token
-    except Exception as e:
-        raise HTTPException(status_code=401, detail="Geçersiz token")
 
 @router.post("/users/register")
 async def register_user(user: User):
