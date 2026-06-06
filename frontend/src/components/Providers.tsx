@@ -6,6 +6,7 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter'
 import { AppThemeProvider } from '@/context/ThemeContext'
 import { CartProvider } from '@/context/CartContext'
+import { ToastProvider } from '@/context/ToastContext'
 
 /**
  * Uygulamanın tüm global sağlayıcılarını tek bir bileşende toplar.
@@ -35,8 +36,10 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <AppThemeProvider>
           <CartProvider>
-            <CssBaseline />
-            {children}
+            <ToastProvider>
+              <CssBaseline />
+              {children}
+            </ToastProvider>
           </CartProvider>
         </AppThemeProvider>
       </QueryClientProvider>

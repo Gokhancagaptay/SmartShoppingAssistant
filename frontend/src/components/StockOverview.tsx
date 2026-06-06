@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from 'react-query'
 import axios from 'axios'
 import { getAuth } from 'firebase/auth'
 import { app } from '@/lib/firebase'
+import { useToast } from '@/context/ToastContext'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ function StockSkeleton() {
 export default function StockOverview() {
   const theme = useTheme()
   const queryClient = useQueryClient()
+  const toast = useToast()
   const auth = getAuth(app)
   const isDark = theme.palette.mode === 'dark'
   const [search, setSearch] = useState('')
@@ -102,7 +104,10 @@ export default function StockOverview() {
         )
       }
     },
-    { onSuccess: () => queryClient.invalidateQueries('stock') }
+    {
+      onSuccess: () => queryClient.invalidateQueries('stock'),
+      onError: () => toast.error('Stok güncellenemedi. Lütfen tekrar deneyin.'),
+    }
   )
 
   // ── Stats ──

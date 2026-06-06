@@ -22,6 +22,7 @@ import { app } from '@/lib/firebase'
 import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/context/ToastContext'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ export default function ProfilePage() {
   const router = useRouter()
   const queryClient = useQueryClient()
 
+  const toast = useToast()
   const [activeTab, setActiveTab] = useState(0)
   const [uid, setUid] = useState<string | null>(null)
   const [deleteAccountDialog, setDeleteAccountDialog] = useState(false)
@@ -165,8 +167,13 @@ export default function ProfilePage() {
         queryClient.invalidateQueries('user-profile')
         setProfileEditMode(false)
         setProfileSaveError(null)
+        toast.success('Profil bilgileri güncellendi.')
       },
-      onError: (err: any) => setProfileSaveError(err.response?.data?.detail || 'Kaydedilemedi.'),
+      onError: (err: any) => {
+        const msg = err.response?.data?.detail || 'Profil kaydedilemedi. Lütfen tekrar deneyin.'
+        setProfileSaveError(msg)
+        toast.error(msg)
+      },
     }
   )
 
@@ -176,8 +183,8 @@ export default function ProfilePage() {
       return axios.post(`/api/auth/users/${uid}/saved-addresses`, data, { headers })
     },
     {
-      onSuccess: () => { refetchAddresses(); setAddrDialog(false); setAddrForm(emptyAddr) },
-      onError: (err: any) => setAddrError(err.response?.data?.detail || 'Adres kaydedilemedi.'),
+      onSuccess: () => { refetchAddresses(); setAddrDialog(false); setAddrForm(emptyAddr); toast.success('Adres kaydedildi.') },
+      onError: (err: any) => setAddrError(err.response?.data?.detail || 'Adres kaydedilemedi. Lütfen tekrar deneyin.'),
     }
   )
 
@@ -186,7 +193,10 @@ export default function ProfilePage() {
       const headers = await getAuthHeader()
       return axios.delete(`/api/auth/users/${uid}/saved-addresses/${addrId}`, { headers })
     },
-    { onSuccess: () => refetchAddresses() }
+    {
+      onSuccess: () => { refetchAddresses(); toast.success('Adres silindi.') },
+      onError: () => toast.error('Adres silinemedi. Lütfen tekrar deneyin.'),
+    }
   )
 
   const deleteAccount = useMutation(

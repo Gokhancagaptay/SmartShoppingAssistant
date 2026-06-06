@@ -262,7 +262,16 @@ export default function CheckoutPage() {
       queryClient.invalidateQueries('admin-orders')
       queryClient.invalidateQueries('stock')
     } catch (err: any) {
-      setOrderError(err?.response?.data?.detail || 'Sipariş oluşturulurken bir hata oluştu.')
+      const status = err?.response?.status
+      let msg = err?.response?.data?.detail || ''
+      if (!msg) {
+        if (status === 401 || status === 403) msg = 'Oturum süreniz dolmuş olabilir. Sayfayı yenileyip tekrar deneyin.'
+        else if (status === 400) msg = 'Sipariş bilgilerinde hata var. Adres ve ürünleri kontrol edin.'
+        else if (status === 500) msg = 'Sunucu hatası. Lütfen birkaç dakika sonra tekrar deneyin.'
+        else if (!err?.response) msg = 'İnternet bağlantınızı kontrol edin ve tekrar deneyin.'
+        else msg = 'Sipariş oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.'
+      }
+      setOrderError(msg)
     } finally {
       setIsLoading(false)
     }

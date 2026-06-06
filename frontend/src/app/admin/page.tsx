@@ -23,6 +23,7 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { app } from '@/lib/firebase'
 import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
+import { useToast } from '@/context/ToastContext'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export default function AdminPage() {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const queryClient = useQueryClient()
+  const toast = useToast()
 
   const [activeTab, setActiveTab] = useState(0)
   const [productDialog, setProductDialog] = useState<{ open: boolean; mode: 'add' | 'edit'; product?: Product }>({ open: false, mode: 'add' })
@@ -164,8 +166,8 @@ export default function AdminPage() {
       }, { headers })
     },
     {
-      onSuccess: () => { queryClient.invalidateQueries('admin-products'); closeDialog() },
-      onError: (err: any) => setFormError(err.response?.data?.detail || 'Ürün eklenemedi.'),
+      onSuccess: () => { queryClient.invalidateQueries('admin-products'); closeDialog(); toast.success('Ürün başarıyla eklendi.') },
+      onError: (err: any) => setFormError(err.response?.data?.detail || 'Ürün eklenemedi. Lütfen tekrar deneyin.'),
     }
   )
 
@@ -178,8 +180,8 @@ export default function AdminPage() {
       }, { headers })
     },
     {
-      onSuccess: () => { queryClient.invalidateQueries('admin-products'); closeDialog() },
-      onError: (err: any) => setFormError(err.response?.data?.detail || 'Ürün güncellenemedi.'),
+      onSuccess: () => { queryClient.invalidateQueries('admin-products'); closeDialog(); toast.success('Ürün güncellendi.') },
+      onError: (err: any) => setFormError(err.response?.data?.detail || 'Ürün güncellenemedi. Lütfen tekrar deneyin.'),
     }
   )
 
@@ -188,7 +190,10 @@ export default function AdminPage() {
       const headers = await getAuthHeader()
       return axios.delete(`/api/products/${id}`, { headers })
     },
-    { onSuccess: () => { queryClient.invalidateQueries('admin-products'); setDeleteConfirm(null) } }
+    {
+      onSuccess: () => { queryClient.invalidateQueries('admin-products'); setDeleteConfirm(null); toast.success('Ürün silindi.') },
+      onError: () => toast.error('Ürün silinemedi. Lütfen tekrar deneyin.'),
+    }
   )
 
   const changeUserRole = useMutation(
@@ -196,7 +201,13 @@ export default function AdminPage() {
       const headers = await getAuthHeader()
       return axios.put(`/api/admin/users/${uid}/role`, { role }, { headers })
     },
-    { onSuccess: () => queryClient.invalidateQueries('admin-users') }
+    {
+      onSuccess: (_data, { role }) => {
+        queryClient.invalidateQueries('admin-users')
+        toast.success(role === 'admin' ? 'Kullanıcı admin yapıldı.' : 'Kullanıcı rolü normal kullanıcıya düşürüldü.')
+      },
+      onError: () => toast.error('Rol değiştirilemedi. Lütfen tekrar deneyin.'),
+    }
   )
 
   const toggleUserDisabled = useMutation(
@@ -204,7 +215,13 @@ export default function AdminPage() {
       const headers = await getAuthHeader()
       return axios.put(`/api/admin/users/${uid}/${disabled ? 'enable' : 'disable'}`, {}, { headers })
     },
-    { onSuccess: () => queryClient.invalidateQueries('admin-users') }
+    {
+      onSuccess: (_data, { disabled }) => {
+        queryClient.invalidateQueries('admin-users')
+        toast.success(disabled ? 'Hesap etkinleştirildi.' : 'Hesap devre dışı bırakıldı.')
+      },
+      onError: (_err, { disabled }) => toast.error(`Hesap ${disabled ? 'etkinleştirilemedi' : 'devre dışı bırakılamadı'}.`),
+    }
   )
 
   const deleteUser = useMutation(
@@ -212,7 +229,14 @@ export default function AdminPage() {
       const headers = await getAuthHeader()
       return axios.delete(`/api/admin/users/${uid}`, { headers })
     },
-    { onSuccess: () => { queryClient.invalidateQueries('admin-users'); setDeleteUserConfirm(null) } }
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries('admin-users')
+        setDeleteUserConfirm(null)
+        toast.success('Kullanıcı silindi.')
+      },
+      onError: () => toast.error('Kullanıcı silinemedi. Lütfen tekrar deneyin.'),
+    }
   )
 
   const updateOrderStatus = useMutation(
@@ -220,7 +244,10 @@ export default function AdminPage() {
       const headers = await getAuthHeader()
       return axios.put(`/api/admin/orders/${customerUserId}/${firebaseOrderId}/status`, { status }, { headers })
     },
-    { onSuccess: () => queryClient.invalidateQueries('admin-orders') }
+    {
+      onSuccess: () => { queryClient.invalidateQueries('admin-orders'); toast.success('Sipariş durumu güncellendi.') },
+      onError: () => toast.error('Sipariş durumu güncellenemedi.'),
+    }
   )
 
   const { data: orders = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery(
