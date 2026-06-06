@@ -4,6 +4,7 @@ from firebase_admin import db, auth
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, validator
 from api.user import verify_token
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter()
 
@@ -66,6 +67,64 @@ async def get_dashboard_stats(_: tuple = Depends(require_admin)):
     except Exception as e:
         print(f"Dashboard istatistikleri alınırken hata: {e}")
         raise HTTPException(status_code=500, detail=f"Dashboard istatistikleri alınamadı: {str(e)}")
+
+@router.get("/analytics", summary="Admin Analitik Verileri")
+async def get_analytics(_: tuple = Depends(require_admin)):
+    try:
+        users_snapshot = db.reference('/users').get() or {}
+
+        now = datetime.now(timezone.utc)
+        thirty_days_ago = now - timedelta(days=30)
+
+        daily_revenue: dict = {}
+        for i in range(30):
+            day = (now - timedelta(days=29 - i)).strftime('%Y-%m-%d')
+            daily_revenue[day] = 0.0
+
+        status_counts: dict = {}
+
+        if isinstance(users_snapshot, dict):
+            for uid, user_data in users_snapshot.items():
+                if not isinstance(user_data, dict):
+                    continue
+                user_orders = user_data.get('orders', {})
+                if not isinstance(user_orders, dict):
+                    continue
+                for order_id, order in user_orders.items():
+                    if not isinstance(order, dict):
+                        continue
+                    status = order.get('status', 'unknown')
+                    status_counts[status] = status_counts.get(status, 0) + 1
+
+                    if status == 'delivered':
+                        ts = order.get('timestamp')
+                        try:
+                            ts_float = float(ts)
+                            # Firebase timestamp may be ms or seconds
+                            order_dt = datetime.fromtimestamp(
+                                ts_float / 1000 if ts_float > 1e10 else ts_float,
+                                tz=timezone.utc
+                            )
+                            if order_dt >= thirty_days_ago:
+                                day_str = order_dt.strftime('%Y-%m-%d')
+                                if day_str in daily_revenue:
+                                    daily_revenue[day_str] += float(order.get('total_price', 0) or 0)
+                        except (ValueError, TypeError):
+                            pass
+
+        return {
+            "revenue_trend": [
+                {"date": day, "revenue": round(rev, 2)}
+                for day, rev in daily_revenue.items()
+            ],
+            "status_distribution": [
+                {"status": st, "count": cnt}
+                for st, cnt in status_counts.items()
+            ],
+        }
+    except Exception as e:
+        print(f"Analitik verileri alınırken hata: {e}")
+        raise HTTPException(status_code=500, detail=f"Analitik veriler alınamadı: {str(e)}")
 
 # === Kullanıcı Yönetimi Endpointleri ===
 

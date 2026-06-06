@@ -1,13 +1,13 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   Container, Box, Typography, Grid, Card, Tab, Tabs, Chip, Stack,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, IconButton, Tooltip, CircularProgress, Alert, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, MenuItem, Select, FormControl, InputLabel,
-  InputAdornment, alpha, useTheme,
+  InputAdornment, alpha, useTheme, LinearProgress,
 } from '@mui/material'
 import {
   People as PeopleIcon, Inventory as ProductIcon, Add as AddIcon,
@@ -16,14 +16,25 @@ import {
   Search as SearchIcon, AdminPanelSettings as AdminIcon,
   Close as CloseIcon, Warning as WarningIcon,
   Block as BlockIcon, CheckCircle as EnableIcon,
+  Analytics as AnalyticsIcon, CloudUpload as UploadIcon,
+  Link as LinkIcon,
 } from '@mui/icons-material'
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, PointElement, LineElement,
+  Title, Tooltip as ChartTooltip, Legend, ArcElement, Filler,
+} from 'chart.js'
+import { Line, Pie } from 'react-chartjs-2'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import axios from 'axios'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
-import { app } from '@/lib/firebase'
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage'
+import { app, storage } from '@/lib/firebase'
 import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
 import { useToast } from '@/context/ToastContext'
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, ChartTooltip, Legend, ArcElement, Filler)
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -113,6 +124,9 @@ export default function AdminPage() {
   const [productSearch, setProductSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [deleteUserConfirm, setDeleteUserConfirm] = useState<{ uid: string; email: string } | null>(null)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageMode, setImageMode] = useState<'url' | 'upload'>('upload')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Firebase auth: undefined=henüz yok, null=çıkış yapıldı, User=giriş yapıldı ──
   const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null | undefined>(undefined)
@@ -260,6 +274,16 @@ export default function AdminPage() {
     { enabled: isAdmin && activeTab === 2, refetchInterval: isAdmin && activeTab === 2 ? 30_000 : false }
   )
 
+  const { data: analytics, isLoading: analyticsLoading } = useQuery(
+    'admin-analytics',
+    async () => {
+      const headers = await getAuthHeader()
+      const res = await axios.get('/api/admin/analytics', { headers })
+      return res.data
+    },
+    { enabled: isAdmin && activeTab === 3 }
+  )
+
   // ── Filtered lists ──
   const filteredUsers = useMemo(() =>
     userSearch ? users.filter((u: any) =>
@@ -332,6 +356,7 @@ export default function AdminPage() {
   const openAddDialog = () => {
     setForm(emptyForm)
     setFormError(null)
+    setImageMode('upload')
     setProductDialog({ open: true, mode: 'add' })
   }
 
@@ -341,7 +366,32 @@ export default function AdminPage() {
       image_url: product.image_url, category: product.category, unit: product.unit || 'adet',
     })
     setFormError(null)
+    setImageMode(product.image_url ? 'url' : 'upload')
     setProductDialog({ open: true, mode: 'edit', product })
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Dosya boyutu 5 MB\'ı geçemez.')
+      return
+    }
+    setImageUploading(true)
+    try {
+      const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `product-images/${Date.now()}_${sanitized}`
+      const ref = storageRef(storage, path)
+      const snapshot = await uploadBytesResumable(ref, file)
+      const url = await getDownloadURL(snapshot.ref)
+      setForm(p => ({ ...p, image_url: url }))
+      toast.success('Görsel başarıyla yüklendi.')
+    } catch {
+      toast.error('Görsel yüklenemedi. Firebase Storage kurallarını kontrol edin.')
+    } finally {
+      setImageUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   const handleFormSubmit = () => {
@@ -351,6 +401,43 @@ export default function AdminPage() {
     }
     if (productDialog.mode === 'add') createProduct.mutate(form)
     else if (productDialog.product) updateProduct.mutate({ id: productDialog.product._id, data: form })
+  }
+
+  // ── Analytics chart data ──
+  const STATUS_TR: Record<string, string> = {
+    pending: 'Beklemede', processing: 'Hazırlanıyor',
+    shipped: 'Kargoda', delivered: 'Teslim Edildi',
+    cancelled: 'İptal', unknown: 'Bilinmiyor',
+  }
+  const STATUS_PIE_COLORS: Record<string, string> = {
+    pending: '#F59E0B', processing: '#6366F1',
+    shipped: '#3B82F6', delivered: '#10B981',
+    cancelled: '#EF4444', unknown: '#9CA3AF',
+  }
+  const lineChartData = {
+    labels: (analytics?.revenue_trend ?? []).map((d: any) => d.date.slice(5)),
+    datasets: [{
+      label: 'Günlük Gelir (₺)',
+      data: (analytics?.revenue_trend ?? []).map((d: any) => d.revenue),
+      borderColor: '#6366F1',
+      backgroundColor: 'rgba(99,102,241,0.08)',
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      borderWidth: 2,
+    }],
+  }
+  const pieChartData = {
+    labels: (analytics?.status_distribution ?? []).map((d: any) => STATUS_TR[d.status] ?? d.status),
+    datasets: [{
+      data: (analytics?.status_distribution ?? []).map((d: any) => d.count),
+      backgroundColor: (analytics?.status_distribution ?? []).map(
+        (d: any) => STATUS_PIE_COLORS[d.status] ?? '#8B5CF6'
+      ),
+      borderWidth: 3,
+      borderColor: isDark ? '#1E1B4B' : '#fff',
+    }],
   }
 
   // ── Stats ──
@@ -443,7 +530,9 @@ export default function AdminPage() {
                       ? 'linear-gradient(90deg,#6366F1,#8B5CF6)'
                       : activeTab === 1
                       ? 'linear-gradient(90deg,#10B981,#0D9488)'
-                      : 'linear-gradient(90deg,#F59E0B,#EF4444)',
+                      : activeTab === 2
+                      ? 'linear-gradient(90deg,#F59E0B,#EF4444)'
+                      : 'linear-gradient(90deg,#06B6D4,#3B82F6)',
                   },
                 }}
               >
@@ -464,6 +553,12 @@ export default function AdminPage() {
                   iconPosition="start"
                   label={`Siparişler${orders.length ? ` (${orders.length})` : ''}`}
                   sx={{ color: activeTab === 2 ? '#F59E0B' : 'text.secondary', '&.Mui-selected': { color: '#F59E0B' } }}
+                />
+                <Tab
+                  icon={<AnalyticsIcon fontSize="small" />}
+                  iconPosition="start"
+                  label="Analitik"
+                  sx={{ color: activeTab === 3 ? '#06B6D4' : 'text.secondary', '&.Mui-selected': { color: '#06B6D4' } }}
                 />
               </Tabs>
             </Box>
@@ -897,6 +992,123 @@ export default function AdminPage() {
                 )}
               </Box>
             )}
+            {/* ══ Analytics tab ══ */}
+            {activeTab === 3 && (
+              <Box sx={{ p: { xs: 2, sm: 3 } }}>
+                {analyticsLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', p: 8 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : (
+                  <Grid container spacing={3}>
+                    {/* Line chart */}
+                    <Grid item xs={12} lg={8}>
+                      <Card
+                        elevation={0}
+                        sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 3, height: '100%' }}
+                      >
+                        <Typography variant="h6" fontWeight={700} mb={0.5}>Son 30 Günlük Gelir Trendi</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                          Teslim edilmiş siparişlerin günlük toplam geliri
+                        </Typography>
+                        {(analytics?.revenue_trend ?? []).every((d: any) => d.revenue === 0) ? (
+                          <Box textAlign="center" py={6}>
+                            <Typography fontSize={40} mb={1}>📈</Typography>
+                            <Typography color="text.secondary">Son 30 günde teslim edilmiş sipariş yok.</Typography>
+                          </Box>
+                        ) : (
+                          <Box sx={{ position: 'relative', height: 280 }}>
+                            <Line
+                              data={lineChartData}
+                              options={{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                  legend: { display: false },
+                                  tooltip: {
+                                    callbacks: {
+                                      label: (ctx) => ` ₺${(ctx.parsed.y ?? 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
+                                    },
+                                  },
+                                },
+                                scales: {
+                                  x: {
+                                    grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+                                    ticks: { maxTicksLimit: 10, font: { size: 11 } },
+                                  },
+                                  y: {
+                                    grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+                                    ticks: {
+                                      font: { size: 11 },
+                                      callback: (v) => `₺${Number(v).toLocaleString('tr-TR')}`,
+                                    },
+                                    beginAtZero: true,
+                                  },
+                                },
+                              }}
+                            />
+                          </Box>
+                        )}
+                      </Card>
+                    </Grid>
+
+                    {/* Pie chart */}
+                    <Grid item xs={12} lg={4}>
+                      <Card
+                        elevation={0}
+                        sx={{ p: 3, border: '1px solid', borderColor: 'divider', borderRadius: 3, height: '100%' }}
+                      >
+                        <Typography variant="h6" fontWeight={700} mb={0.5}>Sipariş Durumu Dağılımı</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                          Tüm siparişler durum bazında
+                        </Typography>
+                        {(analytics?.status_distribution ?? []).length === 0 ? (
+                          <Box textAlign="center" py={6}>
+                            <Typography fontSize={40} mb={1}>🥧</Typography>
+                            <Typography color="text.secondary">Henüz sipariş yok.</Typography>
+                          </Box>
+                        ) : (
+                          <>
+                            <Box sx={{ position: 'relative', height: 220, display: 'flex', justifyContent: 'center' }}>
+                              <Pie
+                                data={pieChartData}
+                                options={{
+                                  responsive: true,
+                                  maintainAspectRatio: false,
+                                  plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                      callbacks: {
+                                        label: (ctx) => ` ${ctx.label}: ${ctx.parsed} sipariş`,
+                                      },
+                                    },
+                                  },
+                                }}
+                              />
+                            </Box>
+                            <Stack spacing={0.75} mt={2}>
+                              {(analytics?.status_distribution ?? []).map((d: any) => (
+                                <Stack key={d.status} direction="row" alignItems="center" justifyContent="space-between">
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: STATUS_PIE_COLORS[d.status] ?? '#8B5CF6', flexShrink: 0 }} />
+                                    <Typography variant="caption" fontWeight={600}>
+                                      {STATUS_TR[d.status] ?? d.status}
+                                    </Typography>
+                                  </Stack>
+                                  <Typography variant="caption" fontWeight={800} color="text.secondary">
+                                    {d.count}
+                                  </Typography>
+                                </Stack>
+                              ))}
+                            </Stack>
+                          </>
+                        )}
+                      </Card>
+                    </Grid>
+                  </Grid>
+                )}
+              </Box>
+            )}
           </Card>
         </Container>
 
@@ -974,20 +1186,96 @@ export default function AdminPage() {
                 placeholder="örn: kg, adet, litre"
                 sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
               />
-              <TextField
-                fullWidth label="Görsel URL" value={form.image_url}
-                onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))}
-                placeholder="https://…"
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-              {form.image_url && (
-                <Box
-                  component="img"
-                  src={form.image_url}
-                  sx={{ height: 130, objectFit: 'cover', borderRadius: 2.5, border: '1px solid', borderColor: 'divider' }}
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              )}
+              {/* ── Görsel yükleme ── */}
+              <Box>
+                <Stack direction="row" spacing={1} mb={1.5}>
+                  <Button
+                    size="small"
+                    variant={imageMode === 'upload' ? 'contained' : 'outlined'}
+                    startIcon={<UploadIcon fontSize="small" />}
+                    onClick={() => setImageMode('upload')}
+                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, flex: 1,
+                      ...(imageMode === 'upload' ? { background: 'linear-gradient(135deg,#6366F1,#8B5CF6)' } : {}) }}
+                  >
+                    Dosya Yükle
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={imageMode === 'url' ? 'contained' : 'outlined'}
+                    startIcon={<LinkIcon fontSize="small" />}
+                    onClick={() => setImageMode('url')}
+                    sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600, flex: 1,
+                      ...(imageMode === 'url' ? { background: 'linear-gradient(135deg,#10B981,#0D9488)' } : {}) }}
+                  >
+                    URL Gir
+                  </Button>
+                </Stack>
+
+                {imageMode === 'upload' ? (
+                  <Box
+                    onClick={() => !imageUploading && fileInputRef.current?.click()}
+                    sx={{
+                      border: '2px dashed',
+                      borderColor: imageUploading ? 'primary.main' : 'divider',
+                      borderRadius: 2.5,
+                      p: 3,
+                      textAlign: 'center',
+                      cursor: imageUploading ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.2s',
+                      bgcolor: 'action.hover',
+                      '&:hover': imageUploading ? {} : { borderColor: 'primary.main', bgcolor: alpha('#6366F1', 0.04) },
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleFileChange}
+                    />
+                    {imageUploading ? (
+                      <Stack alignItems="center" spacing={1.5}>
+                        <CircularProgress size={28} />
+                        <Typography variant="body2" color="primary">Yükleniyor…</Typography>
+                        <LinearProgress sx={{ width: '100%', borderRadius: 1 }} />
+                      </Stack>
+                    ) : (
+                      <Stack alignItems="center" spacing={1}>
+                        <UploadIcon sx={{ fontSize: 36, color: 'text.disabled' }} />
+                        <Typography variant="body2" fontWeight={600}>Tıkla veya sürükle</Typography>
+                        <Typography variant="caption" color="text.secondary">PNG, JPG, WEBP — maks 5 MB</Typography>
+                      </Stack>
+                    )}
+                  </Box>
+                ) : (
+                  <TextField
+                    fullWidth label="Görsel URL" value={form.image_url}
+                    onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))}
+                    placeholder="https://…"
+                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                  />
+                )}
+
+                {form.image_url && (
+                  <Box sx={{ mt: 1.5, position: 'relative' }}>
+                    <Box
+                      component="img"
+                      src={form.image_url}
+                      sx={{ width: '100%', height: 130, objectFit: 'cover', borderRadius: 2.5, border: '1px solid', borderColor: 'divider', display: 'block' }}
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                    <Button
+                      size="small"
+                      onClick={() => setForm(p => ({ ...p, image_url: '' }))}
+                      sx={{ position: 'absolute', top: 6, right: 6, minWidth: 0, borderRadius: 1.5,
+                        bgcolor: 'rgba(0,0,0,0.55)', color: 'white', fontSize: 11, px: 1,
+                        '&:hover': { bgcolor: 'rgba(239,68,68,0.85)' } }}
+                    >
+                      Kaldır
+                    </Button>
+                  </Box>
+                )}
+              </Box>
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>

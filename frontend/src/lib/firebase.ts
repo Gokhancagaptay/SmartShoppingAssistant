@@ -1,11 +1,13 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
 import { getAuth, type Auth } from 'firebase/auth'
 import { getDatabase, type Database } from 'firebase/database'
+import { getStorage, type FirebaseStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   databaseURL: 'https://market-b596e-default-rtdb.europe-west1.firebasedatabase.app',
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
@@ -25,6 +27,7 @@ const app: FirebaseApp = process.env.NEXT_PUBLIC_FIREBASE_API_KEY
 
 const auth: Auth = app ? getAuth(app) : (null as unknown as Auth)
 const database: Database = app ? getDatabase(app) : (null as unknown as Database)
+const storage: FirebaseStorage = app ? getStorage(app) : (null as unknown as FirebaseStorage)
 
-export { app, auth, database }
+export { app, auth, database, storage }
 export default app
