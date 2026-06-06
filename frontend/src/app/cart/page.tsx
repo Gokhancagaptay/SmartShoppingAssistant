@@ -116,7 +116,7 @@ export default function CartPage() {
   /* ── Boş sepet ── */
   if (totalCount === 0) {
     return (
-      <AuthGuard>
+      <AuthGuard userOnly>
         <MainLayout>
           <Container maxWidth="sm">
             <Box
@@ -168,7 +168,7 @@ export default function CartPage() {
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard userOnly>
       <MainLayout>
         <Container maxWidth="lg" sx={{ pb: 14 }}>
           {/* Başlık */}

@@ -8,7 +8,7 @@ import RecipeSuggestions from '@/components/RecipeSuggestions'
 
 export default function RecipesPage() {
   return (
-    <AuthGuard>
+    <AuthGuard userOnly>
       <MainLayout>
         <Container maxWidth="md" sx={{ pb: 8 }}>
           {/* Hero */}

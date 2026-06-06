@@ -8,7 +8,7 @@ import NutritionAnalysis from '@/components/NutritionAnalysis'
 
 export default function NutritionPage() {
   return (
-    <AuthGuard>
+    <AuthGuard userOnly>
       <MainLayout>
         <Container maxWidth="md" sx={{ pb: 8 }}>
           {/* Hero */}

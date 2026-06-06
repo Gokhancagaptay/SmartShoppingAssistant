@@ -83,7 +83,7 @@ export default function PreferencesPage() {
       : `linear-gradient(135deg, ${alpha('#7C3AED', 0.08)} 0%, ${alpha('#EC4899', 0.06)} 100%)`
 
   return (
-    <AuthGuard>
+    <AuthGuard userOnly>
       <MainLayout>
         <Container maxWidth="md" sx={{ py: { xs: 3, md: 5 } }}>
           {/* ── Başlık ── */}

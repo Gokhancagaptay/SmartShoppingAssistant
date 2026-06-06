@@ -15,6 +15,7 @@ import {
   TrendingUp as RevenueIcon, ShoppingCart as OrderIcon,
   Search as SearchIcon, AdminPanelSettings as AdminIcon,
   Close as CloseIcon, Warning as WarningIcon,
+  Block as BlockIcon, CheckCircle as EnableIcon,
 } from '@mui/icons-material'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import axios from 'axios'
@@ -109,6 +110,7 @@ export default function AdminPage() {
   const [userSearch, setUserSearch] = useState('')
   const [productSearch, setProductSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
+  const [deleteUserConfirm, setDeleteUserConfirm] = useState<{ uid: string; email: string } | null>(null)
 
   // ── Firebase auth: undefined=henüz yok, null=çıkış yapıldı, User=giriş yapıldı ──
   const [firebaseUser, setFirebaseUser] = useState<import('firebase/auth').User | null | undefined>(undefined)
@@ -187,6 +189,48 @@ export default function AdminPage() {
       return axios.delete(`/api/products/${id}`, { headers })
     },
     { onSuccess: () => { queryClient.invalidateQueries('admin-products'); setDeleteConfirm(null) } }
+  )
+
+  const changeUserRole = useMutation(
+    async ({ uid, role }: { uid: string; role: string }) => {
+      const headers = await getAuthHeader()
+      return axios.put(`/api/admin/users/${uid}/role`, { role }, { headers })
+    },
+    { onSuccess: () => queryClient.invalidateQueries('admin-users') }
+  )
+
+  const toggleUserDisabled = useMutation(
+    async ({ uid, disabled }: { uid: string; disabled: boolean }) => {
+      const headers = await getAuthHeader()
+      return axios.put(`/api/admin/users/${uid}/${disabled ? 'enable' : 'disable'}`, {}, { headers })
+    },
+    { onSuccess: () => queryClient.invalidateQueries('admin-users') }
+  )
+
+  const deleteUser = useMutation(
+    async (uid: string) => {
+      const headers = await getAuthHeader()
+      return axios.delete(`/api/admin/users/${uid}`, { headers })
+    },
+    { onSuccess: () => { queryClient.invalidateQueries('admin-users'); setDeleteUserConfirm(null) } }
+  )
+
+  const updateOrderStatus = useMutation(
+    async ({ customerUserId, firebaseOrderId, status }: { customerUserId: string; firebaseOrderId: string; status: string }) => {
+      const headers = await getAuthHeader()
+      return axios.put(`/api/admin/orders/${customerUserId}/${firebaseOrderId}/status`, { status }, { headers })
+    },
+    { onSuccess: () => queryClient.invalidateQueries('admin-orders') }
+  )
+
+  const { data: orders = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery(
+    'admin-orders',
+    async () => {
+      const headers = await getAuthHeader()
+      const res = await axios.get('/api/admin/orders', { headers })
+      return Array.isArray(res.data) ? res.data : res.data.orders || []
+    },
+    { enabled: isAdmin && activeTab === 2 }
   )
 
   // ── Filtered lists ──
@@ -370,7 +414,9 @@ export default function AdminPage() {
                     borderRadius: '3px 3px 0 0',
                     background: activeTab === 0
                       ? 'linear-gradient(90deg,#6366F1,#8B5CF6)'
-                      : 'linear-gradient(90deg,#10B981,#0D9488)',
+                      : activeTab === 1
+                      ? 'linear-gradient(90deg,#10B981,#0D9488)'
+                      : 'linear-gradient(90deg,#F59E0B,#EF4444)',
                   },
                 }}
               >
@@ -385,6 +431,12 @@ export default function AdminPage() {
                   iconPosition="start"
                   label={`Ürünler${products.length ? ` (${products.length})` : ''}`}
                   sx={{ color: activeTab === 1 ? '#10B981' : 'text.secondary', '&.Mui-selected': { color: '#10B981' } }}
+                />
+                <Tab
+                  icon={<OrderIcon fontSize="small" />}
+                  iconPosition="start"
+                  label={`Siparişler${orders.length ? ` (${orders.length})` : ''}`}
+                  sx={{ color: activeTab === 2 ? '#F59E0B' : 'text.secondary', '&.Mui-selected': { color: '#F59E0B' } }}
                 />
               </Tabs>
             </Box>
@@ -429,13 +481,14 @@ export default function AdminPage() {
                           <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Kullanıcı</TableCell>
                           <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>E-posta</TableCell>
                           <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Rol</TableCell>
-                          <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Telefon</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Durum</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary', width: 80 }}>İşlemler</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {filteredUsers.map((u: any, i: number) => (
                           <TableRow
-                            key={i}
+                            key={u.uid ?? i}
                             hover
                             sx={{ '&:last-child td': { border: 0 }, transition: 'background 0.15s' }}
                           >
@@ -453,25 +506,172 @@ export default function AdminPage() {
                               </Typography>
                             </TableCell>
                             <TableCell>
-                              <Chip
-                                label={u.role === 'admin' ? '🛡️ Admin' : '👤 Kullanıcı'}
+                              <Select
                                 size="small"
-                                sx={{
-                                  fontWeight: 700,
-                                  fontSize: '0.72rem',
+                                value={u.role ?? 'user'}
+                                disabled={changeUserRole.isLoading}
+                                onChange={(e) => changeUserRole.mutate({ uid: u.uid, role: e.target.value })}
+                                sx={{ fontSize: '0.8rem', fontWeight: 600, borderRadius: 2, minWidth: 120,
                                   ...(u.role === 'admin'
-                                    ? { background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: 'white' }
-                                    : { bgcolor: alpha(theme.palette.text.secondary, 0.1), color: 'text.secondary' }),
+                                    ? { bgcolor: alpha('#6366F1', 0.1), color: '#6366F1' }
+                                    : { bgcolor: alpha(theme.palette.text.secondary, 0.07) })
                                 }}
-                              />
+                              >
+                                <MenuItem value="user">👤 Kullanıcı</MenuItem>
+                                <MenuItem value="admin">🛡️ Admin</MenuItem>
+                              </Select>
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {u.phone || '—'}
-                              </Typography>
+                              <Stack direction="row" alignItems="center" spacing={1}>
+                                <Chip
+                                  size="small"
+                                  label={u.disabled ? 'Devre Dışı' : 'Aktif'}
+                                  sx={{
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    ...(u.disabled
+                                      ? { bgcolor: alpha('#EF4444', 0.12), color: '#EF4444' }
+                                      : { bgcolor: alpha('#10B981', 0.12), color: '#059669' }),
+                                  }}
+                                />
+                                <Tooltip title={u.disabled ? 'Etkinleştir' : 'Devre Dışı Bırak'}>
+                                  <IconButton
+                                    size="small"
+                                    disabled={toggleUserDisabled.isLoading}
+                                    onClick={() => toggleUserDisabled.mutate({ uid: u.uid, disabled: u.disabled })}
+                                    sx={{
+                                      color: u.disabled ? '#10B981' : '#F59E0B',
+                                      '&:hover': { bgcolor: alpha(u.disabled ? '#10B981' : '#F59E0B', 0.1) },
+                                    }}
+                                  >
+                                    {u.disabled ? <EnableIcon sx={{ fontSize: 16 }} /> : <BlockIcon sx={{ fontSize: 16 }} />}
+                                  </IconButton>
+                                </Tooltip>
+                              </Stack>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Tooltip title="Kullanıcıyı Sil">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setDeleteUserConfirm({ uid: u.uid, email: u.email })}
+                                  sx={{ color: '#EF4444', '&:hover': { bgcolor: alpha('#EF4444', 0.1) } }}
+                                >
+                                  <DeleteIcon sx={{ fontSize: 17 }} />
+                                </IconButton>
+                              </Tooltip>
                             </TableCell>
                           </TableRow>
                         ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Box>
+            )}
+
+            {/* ══ Orders tab ══ */}
+            {activeTab === 2 && (
+              <Box sx={{ p: { xs: 2, sm: 3 } }}>
+                <Stack direction="row" justifyContent="flex-end" mb={2.5}>
+                  <Tooltip title="Yenile">
+                    <IconButton onClick={() => refetchOrders()} size="small" sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+                      <RefreshIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+
+                {ordersLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : orders.length === 0 ? (
+                  <Box textAlign="center" py={6}>
+                    <Typography fontSize={40} mb={1}>🛒</Typography>
+                    <Typography variant="body1" color="text.secondary">Henüz sipariş yok.</Typography>
+                  </Box>
+                ) : (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Sipariş No</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Müşteri</TableCell>
+                          <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Ürünler</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Toplam</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Durum</TableCell>
+                          <TableCell sx={{ fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.7, color: 'text.secondary' }}>Tarih</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {orders.map((order: any) => {
+                          const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
+                            pending:    { bg: alpha('#F59E0B', 0.12), fg: '#D97706' },
+                            processing: { bg: alpha('#6366F1', 0.12), fg: '#6366F1' },
+                            shipped:    { bg: alpha('#3B82F6', 0.12), fg: '#3B82F6' },
+                            delivered:  { bg: alpha('#10B981', 0.12), fg: '#059669' },
+                            cancelled:  { bg: alpha('#EF4444', 0.12), fg: '#EF4444' },
+                          }
+                          const STATUS_LABELS: Record<string, string> = {
+                            pending: 'Beklemede', processing: 'Hazırlanıyor',
+                            shipped: 'Kargoda', delivered: 'Teslim Edildi', cancelled: 'İptal',
+                          }
+                          const sc = STATUS_COLORS[order.status] ?? { bg: alpha('#6366F1', 0.1), fg: '#6366F1' }
+                          const dateStr = order.timestamp
+                            ? new Date(order.timestamp).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                            : '—'
+                          return (
+                            <TableRow key={order.firebaseOrderId ?? order.orderNumber} hover sx={{ '&:last-child td': { border: 0 } }}>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={700} sx={{ fontFamily: 'monospace' }}>
+                                  #{order.orderNumber ?? '—'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" fontWeight={600} noWrap sx={{ maxWidth: 140 }}>
+                                  {order.customerName ?? '—'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 140, display: 'block' }}>
+                                  {order.customerEmail ?? ''}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <Chip
+                                  label={`${order.products?.length ?? 0} ürün`}
+                                  size="small"
+                                  sx={{ fontWeight: 600, bgcolor: alpha('#6366F1', 0.08), color: '#6366F1' }}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2" fontWeight={800} color="primary">
+                                  {order.totalPrice != null ? `₺${Number(order.totalPrice).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}` : '—'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Select
+                                  size="small"
+                                  value={order.status ?? 'pending'}
+                                  disabled={updateOrderStatus.isLoading}
+                                  onChange={(e) => updateOrderStatus.mutate({
+                                    customerUserId: order.customerUserId,
+                                    firebaseOrderId: order.firebaseOrderId,
+                                    status: e.target.value,
+                                  })}
+                                  sx={{
+                                    fontSize: '0.78rem', fontWeight: 700, borderRadius: 2, minWidth: 140,
+                                    bgcolor: sc.bg, color: sc.fg,
+                                  }}
+                                >
+                                  {Object.entries(STATUS_LABELS).map(([val, label]) => (
+                                    <MenuItem key={val} value={val}>{label}</MenuItem>
+                                  ))}
+                                </Select>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">{dateStr}</Typography>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
                       </TableBody>
                     </Table>
                   </TableContainer>
@@ -814,6 +1014,39 @@ export default function AdminPage() {
               sx={{ borderRadius: 2.5, fontWeight: 700 }}
             >
               {deleteProduct.isLoading ? <CircularProgress size={18} color="inherit" /> : 'Sili Onayla'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ── Kullanıcı Silme Onay Dialog ── */}
+        <Dialog
+          open={Boolean(deleteUserConfirm)}
+          onClose={() => setDeleteUserConfirm(null)}
+          PaperProps={{ sx: { borderRadius: 4 } }}
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1.5, pb: 1 }}>
+            <Avatar sx={{ bgcolor: alpha('#EF4444', 0.12), width: 40, height: 40 }}>
+              <DeleteIcon sx={{ color: '#EF4444', fontSize: 20 }} />
+            </Avatar>
+            <Typography variant="h6" fontWeight={700}>Kullanıcıyı Sil</Typography>
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              <strong style={{ color: 'inherit' }}>{deleteUserConfirm?.email}</strong> kullanıcısını kalıcı olarak silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+            <Button onClick={() => setDeleteUserConfirm(null)} variant="outlined" sx={{ borderRadius: 2.5 }}>
+              İptal
+            </Button>
+            <Button
+              onClick={() => deleteUserConfirm && deleteUser.mutate(deleteUserConfirm.uid)}
+              variant="contained"
+              color="error"
+              disabled={deleteUser.isLoading}
+              sx={{ borderRadius: 2.5, fontWeight: 700 }}
+            >
+              {deleteUser.isLoading ? <CircularProgress size={18} color="inherit" /> : 'Sil Onayla'}
             </Button>
           </DialogActions>
         </Dialog>

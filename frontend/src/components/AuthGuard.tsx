@@ -4,20 +4,19 @@ import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Box, CircularProgress, Typography } from '@mui/material'
 import { useAuth } from '@/hooks/useAuth'
+import { useRole } from '@/hooks/useRole'
 
 interface AuthGuardProps {
   children: React.ReactNode
   /** Sadece admin rolüne sahip kullanıcılar erişebilir */
   adminOnly?: boolean
+  /** Sadece normal kullanıcılar erişebilir — admin gelirse /admin'e yönlendir */
+  userOnly?: boolean
 }
 
-/**
- * Kimlik doğrulama gerektiren sayfaları korur.
- * Giriş yapılmamışsa /login'e yönlendirir.
- * adminOnly=true ise admin olmayan kullanıcıları ana sayfaya yönlendirir.
- */
-export default function AuthGuard({ children, adminOnly = false }: AuthGuardProps) {
+export default function AuthGuard({ children, adminOnly = false, userOnly = false }: AuthGuardProps) {
   const { user, loading } = useAuth()
+  const { isAdmin } = useRole()
   const router = useRouter()
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -36,11 +35,11 @@ export default function AuthGuard({ children, adminOnly = false }: AuthGuardProp
       }
     }
 
-    if (adminOnly && (user as { role?: string }).role !== 'admin') {
-      router.replace('/')
+    if (userOnly && isAdmin) {
+      router.replace('/admin')
     }
     return undefined
-  }, [user, loading, adminOnly, router])
+  }, [user, loading, userOnly, isAdmin, router])
 
   if (loading) {
     return (

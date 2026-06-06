@@ -8,7 +8,7 @@ import StockOverview from '@/components/StockOverview'
 
 export default function StockPage() {
   return (
-    <AuthGuard>
+    <AuthGuard userOnly>
       <MainLayout>
         <Container maxWidth="md" sx={{ pb: 8 }}>
           {/* Hero */}

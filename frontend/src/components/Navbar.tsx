@@ -21,8 +21,10 @@ import { useRouter, usePathname } from 'next/navigation'
 import { getAuth, signOut } from 'firebase/auth'
 import { app } from '@/lib/firebase'
 import { useAuth } from '@/hooks/useAuth'
+import { useRole } from '@/hooks/useRole'
 import { useThemeMode } from '@/context/ThemeContext'
 import { useCart } from '@/context/CartContext'
+import { useQueryClient } from 'react-query'
 
 const DRAWER_WIDTH = 260
 
@@ -31,24 +33,27 @@ interface NavItem {
   href: string
   icon: React.ReactNode
   adminOnly?: boolean
+  userOnly?: boolean
   badge?: number
 }
 
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: <DashboardIcon fontSize="small" /> },
   { label: 'Ürünler', href: '/products', icon: <ShoppingListIcon fontSize="small" /> },
-  { label: 'Sepet', href: '/cart', icon: <CartIcon fontSize="small" /> },
-  { label: 'Stok', href: '/stock', icon: <StockIcon fontSize="small" /> },
-  { label: 'Tarifler', href: '/recipes', icon: <RecipeIcon fontSize="small" /> },
-  { label: 'Beslenme', href: '/nutrition', icon: <NutritionIcon fontSize="small" /> },
-  { label: 'Diyet', href: '/preferences', icon: <DietIcon fontSize="small" /> },
+  { label: 'Sepet', href: '/cart', icon: <CartIcon fontSize="small" />, userOnly: true },
+  { label: 'Stok', href: '/stock', icon: <StockIcon fontSize="small" />, userOnly: true },
+  { label: 'Tarifler', href: '/recipes', icon: <RecipeIcon fontSize="small" />, userOnly: true },
+  { label: 'Beslenme', href: '/nutrition', icon: <NutritionIcon fontSize="small" />, userOnly: true },
+  { label: 'Diyet', href: '/preferences', icon: <DietIcon fontSize="small" />, userOnly: true },
   { label: 'Admin', href: '/admin', icon: <AdminIcon fontSize="small" />, adminOnly: true },
 ]
 
 /** Glassmorphism tasarımlı responsive navigasyon çubuğu */
 export default function Navbar() {
   const { user } = useAuth()
+  const { isAdmin } = useRole()
   const { mode, setMode } = useThemeMode()
+  const queryClient = useQueryClient()
   const { totalCount } = useCart()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
@@ -66,10 +71,9 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const isAdmin = (user as any)?.role === 'admin'
-
   const handleLogout = async () => {
     setUserMenuAnchor(null)
+    queryClient.clear()
     await signOut(getAuth(app))
     router.push('/login')
   }
@@ -84,7 +88,9 @@ export default function Navbar() {
   const ThemeIcon = mode === 'light' ? LightIcon : mode === 'dark' ? DarkIcon : SystemIcon
   const themeTooltip = mode === 'light' ? 'Koyu Tema' : mode === 'dark' ? 'Sistem Teması' : 'Açık Tema'
 
-  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdmin)
+  const visibleItems = navItems.filter((item) =>
+    (!item.adminOnly || isAdmin) && (!item.userOnly || !isAdmin)
+  )
   const initials =
     user?.displayName?.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase() ||
     user?.email?.[0]?.toUpperCase() ||
