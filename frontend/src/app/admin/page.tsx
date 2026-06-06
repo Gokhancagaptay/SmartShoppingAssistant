@@ -133,7 +133,7 @@ export default function AdminPage() {
     const headers = await getAuthHeader()
     const res = await axios.get('/api/admin/dashboard/stats', { headers })
     return res.data
-  }, { enabled: isAdmin })
+  }, { enabled: isAdmin, refetchInterval: isAdmin ? 30_000 : false })
 
   const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery(
     'admin-users',
@@ -230,7 +230,7 @@ export default function AdminPage() {
       const res = await axios.get('/api/admin/orders', { headers })
       return Array.isArray(res.data) ? res.data : res.data.orders || []
     },
-    { enabled: isAdmin && activeTab === 2 }
+    { enabled: isAdmin && activeTab === 2, refetchInterval: isAdmin && activeTab === 2 ? 30_000 : false }
   )
 
   // ── Filtered lists ──

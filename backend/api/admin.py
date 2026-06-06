@@ -27,38 +27,35 @@ class UserRoleUpdate(BaseModel):
 @router.get("/dashboard/stats", summary="Admin Dashboard İstatistikleri")
 async def get_dashboard_stats(_: tuple = Depends(require_admin)):
     try:
-        orders_ref = db.reference('/orders')
-        users_ref = db.reference('/users') # Kullanıcılar için referans eklendi
-        
-        orders_snapshot = orders_ref.get()
-        users_snapshot = users_ref.get() # Kullanıcı verileri çekildi
+        users_ref = db.reference('/users')
+        users_snapshot = users_ref.get() or {}
 
         total_completed_revenue = 0.0
         active_orders_count = 0
         total_users = 0
 
-        # Siparişleri işle
-        if orders_snapshot and isinstance(orders_snapshot, dict):
-            for user_id, user_orders in orders_snapshot.items():
-                if isinstance(user_orders, dict):
-                    for order_id, order_details in user_orders.items():
-                        if isinstance(order_details, dict):
-                            status = order_details.get('status')
-                            total_price_str = str(order_details.get('totalPrice', '0')) 
-                            total_price = 0.0
-                            try:
-                                total_price = float(total_price_str)
-                            except ValueError:
-                                print(f"Uyarı: order {order_id} için totalPrice ('{total_price_str}') float'a çevrilemedi.")
+        ACTIVE_STATUSES = {'pending', 'processing', 'shipped'}
 
-                            if status == "completed":
-                                total_completed_revenue += total_price
-                            if status == "active":
-                                active_orders_count += 1
-        
-        # Kullanıcı sayısını hesapla
-        if users_snapshot and isinstance(users_snapshot, dict):
+        if isinstance(users_snapshot, dict):
             total_users = len(users_snapshot)
+            for uid, user_data in users_snapshot.items():
+                if not isinstance(user_data, dict):
+                    continue
+                user_orders = user_data.get('orders', {})
+                if not isinstance(user_orders, dict):
+                    continue
+                for order_id, order_details in user_orders.items():
+                    if not isinstance(order_details, dict):
+                        continue
+                    status = order_details.get('status', '')
+                    try:
+                        total_price = float(order_details.get('total_price', 0))
+                    except (ValueError, TypeError):
+                        total_price = 0.0
+                    if status == 'delivered':
+                        total_completed_revenue += total_price
+                    if status in ACTIVE_STATUSES:
+                        active_orders_count += 1
         
         return {
             "totalCompletedRevenue": round(total_completed_revenue, 2),
@@ -225,67 +222,86 @@ class AdminOrderResponse(BaseModel):
 async def list_all_orders(status: Optional[str] = None, _: tuple = Depends(require_admin)):
     all_orders_list = []
     try:
-        orders_root_ref = db.reference('/orders')
         users_root_ref = db.reference('/users')
-        
-        orders_snapshot = orders_root_ref.get()
-        users_snapshot = users_root_ref.get() or {} # Kullanıcılar yoksa boş dict
+        users_snapshot = users_root_ref.get() or {}
 
-        if not orders_snapshot or not isinstance(orders_snapshot, dict):
+        if not isinstance(users_snapshot, dict):
             return []
 
-        for customer_user_id, user_orders in orders_snapshot.items():
+        for customer_user_id, user_data in users_snapshot.items():
+            if not isinstance(user_data, dict):
+                continue
+
+            customer_name = f"{user_data.get('name', '')} {user_data.get('surname', '')}".strip()
+            customer_email = user_data.get('email', '')
+            user_orders = user_data.get('orders', {})
+
             if not isinstance(user_orders, dict):
                 continue
-            
-            customer_info = users_snapshot.get(customer_user_id, {})
-            customer_name = f"{customer_info.get('name', '')} {customer_info.get('surname', '')}".strip()
-            customer_email = customer_info.get('email', '')
 
             for firebase_order_id, order_details in user_orders.items():
                 if not isinstance(order_details, dict):
                     continue
-                
+
                 # Durum filtresi
                 if status and order_details.get('status') != status:
                     continue
-                
-                # Product listesini OrderProductDetail modeline uygun hale getirme
-                raw_products = order_details.get('products', [])
+
+                # items key (yeni) veya products key (eski) destekle
+                raw_products = order_details.get('items', order_details.get('products', []))
                 parsed_products = []
                 if isinstance(raw_products, list):
                     for prod in raw_products:
                         if isinstance(prod, dict):
-                            # Eski siparişlerde product id olmayabilir, kontrol ekle
-                            prod_id = prod.get('id') 
+                            prod_id = prod.get('id')
                             parsed_products.append(OrderProductDetail(
-                                id=str(prod_id) if prod_id else None, # ObjectId ise str'ye çevir, yoksa None
-                                imageUrl=prod.get('imageUrl', prod.get('image_url')), # iki farklı key olabiliyor
+                                id=str(prod_id) if prod_id else None,
+                                imageUrl=prod.get('imageUrl', prod.get('image_url')),
                                 name=prod.get('name', 'Bilinmeyen Ürün'),
                                 price=float(prod.get('price', 0.0)),
                                 quantity=int(prod.get('quantity', 0)),
                                 unit=prod.get('unit')
                             ))
-                
-                # Adres detaylarını OrderAddressDetail modeline uygun hale getirme
+
                 raw_address = order_details.get('address')
                 parsed_address = None
                 if isinstance(raw_address, dict):
-                    parsed_address = OrderAddressDetail(**raw_address)
+                    try:
+                        parsed_address = OrderAddressDetail(**raw_address)
+                    except Exception:
+                        pass
+
+                # created_at (ISO string) → timestamp float
+                created_at = order_details.get('created_at') or order_details.get('timestamp')
+                ts = 0.0
+                if created_at:
+                    try:
+                        if isinstance(created_at, (int, float)):
+                            ts = float(created_at)
+                        else:
+                            from datetime import datetime
+                            ts = datetime.fromisoformat(str(created_at).replace('Z', '+00:00')).timestamp()
+                    except Exception:
+                        ts = 0.0
+
+                try:
+                    total_price = float(order_details.get('total_price', order_details.get('totalPrice', 0.0)))
+                except (ValueError, TypeError):
+                    total_price = 0.0
 
                 order_data = AdminOrderResponse(
                     firebaseOrderId=firebase_order_id,
                     customerUserId=customer_user_id,
                     customerName=customer_name if customer_name else None,
                     customerEmail=customer_email if customer_email else None,
-                    orderId=str(order_details.get('orderId', '')),
-                    orderNumber=order_details.get('orderNumber'),
-                    paymentMethod=order_details.get('paymentMethod'),
+                    orderId=str(order_details.get('order_id', order_details.get('orderId', ''))),
+                    orderNumber=order_details.get('order_id', firebase_order_id),
+                    paymentMethod=order_details.get('payment_method', order_details.get('paymentMethod')),
                     products=parsed_products,
                     rating=order_details.get('rating'),
                     status=order_details.get('status'),
-                    timestamp=float(order_details.get('timestamp', 0)),
-                    totalPrice=float(order_details.get('totalPrice', 0.0)),
+                    timestamp=ts,
+                    totalPrice=total_price,
                     address=parsed_address
                 )
                 all_orders_list.append(order_data)
@@ -312,7 +328,7 @@ async def update_order_status_admin(
         raise HTTPException(status_code=400, detail="Yeni durum (status) değeri body içinde gönderilmelidir.")
 
     try:
-        order_ref = db.reference(f'/orders/{customer_user_id}/{firebase_order_id}')
+        order_ref = db.reference(f'users/{customer_user_id}/orders/{firebase_order_id}')
         if not order_ref.get():
             raise HTTPException(status_code=404, detail=f"Sipariş bulunamadı: {customer_user_id}/{firebase_order_id}")
         

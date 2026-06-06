@@ -472,6 +472,28 @@ def delete_stock(user_id: str, product_id: str, current_user: dict = Depends(get
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Stok silinemedi: {str(e)}")
 
+@router.delete("/delete-account", summary="Hesabı Kalıcı Olarak Sil")
+async def delete_account(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        decoded_token = _verify_id_token(token)
+        uid = decoded_token.get("uid")
+        if not uid:
+            raise HTTPException(status_code=401, detail="Kullanıcı kimliği bulunamadı")
+
+        # RTDB'den kullanıcı verisini sil
+        db.reference(f"users/{uid}").delete()
+
+        # Firebase Auth'dan kullanıcıyı sil
+        auth.delete_user(uid)
+
+        return {"message": "Hesap başarıyla silindi"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hesap silinemedi: {str(e)}")
+
+
 # Duplicate the endpoint to handle both old and new paths
 @router.put("/auth/update", summary="Kullanıcı Profilini Güncelle (Eski Yol)")
 async def update_profile_old_path(user_data: UserUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):

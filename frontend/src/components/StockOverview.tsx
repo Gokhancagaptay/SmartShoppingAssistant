@@ -83,7 +83,7 @@ export default function StockOverview() {
       const res = await axios.get(`/api/auth/users/${uid}/stock`, { headers: { Authorization } })
       return res.data
     },
-    { retry: false }
+    { retry: false, refetchInterval: 15_000 }
   )
 
   const updateMutation = useMutation(

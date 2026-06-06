@@ -14,7 +14,7 @@ import {
   AdminPanelSettings as AdminIcon, Logout as LogoutIcon,
   LightMode as LightIcon, DarkMode as DarkIcon,
   SettingsBrightness as SystemIcon, AutoAwesome as SparkleIcon,
-  EmojiEvents as DietIcon,
+  EmojiEvents as DietIcon, Person as PersonIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
@@ -424,6 +424,17 @@ export default function Navbar() {
                   </Typography>
                 </Box>
                 <Divider />
+                {!isAdmin && (
+                  <MenuItem
+                    component={Link}
+                    href="/profile"
+                    onClick={() => setUserMenuAnchor(null)}
+                    sx={{ gap: 1.5, mx: 0.5, borderRadius: 2, my: 0.5 }}
+                  >
+                    <PersonIcon fontSize="small" />
+                    <Typography variant="body2" fontWeight={600}>Profilim</Typography>
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={handleLogout}
                   sx={{ gap: 1.5, color: 'error.main', mx: 0.5, borderRadius: 2, my: 0.5 }}

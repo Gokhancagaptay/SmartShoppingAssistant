@@ -23,6 +23,7 @@ import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
 import { useCart } from '@/context/CartContext'
 import { shippingFeeTl } from '@/lib/orderRules'
+import { useQueryClient } from 'react-query'
 
 // ── Tipler ───────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ const emptyCard    = { label:'', cardNumber:'', cardHolder:'', expiry:'', cvv:''
 
 export default function CheckoutPage() {
   const { items, totalPrice, clearCart } = useCart()
+  const queryClient = useQueryClient()
 
   // ── Adres state ──
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
@@ -255,6 +257,10 @@ export default function CheckoutPage() {
       )
       setOrderId(res.data.order_id || `ORD-${Date.now()}`)
       clearCart()
+      queryClient.invalidateQueries('products')
+      queryClient.invalidateQueries('admin-stats')
+      queryClient.invalidateQueries('admin-orders')
+      queryClient.invalidateQueries('stock')
     } catch (err: any) {
       setOrderError(err?.response?.data?.detail || 'Sipariş oluşturulurken bir hata oluştu.')
     } finally {
