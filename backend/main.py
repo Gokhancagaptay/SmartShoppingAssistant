@@ -19,6 +19,7 @@ from api.snack import router as snack_router
 from api.admin import router as admin_router
 from api.chat import router as chat_router
 from api.nutrition import router as nutrition_router
+from api.payment import router as payment_router
 from core.settings import parse_cors_settings
 
 load_dotenv()
@@ -73,6 +74,7 @@ app.include_router(snack_router, prefix="/api/snacks", tags=["snacks"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 app.include_router(nutrition_router, prefix="/api/nutrition", tags=["nutrition"])
+app.include_router(payment_router, prefix="/api/payment", tags=["payment"])
 
 
 @app.get("/routes")

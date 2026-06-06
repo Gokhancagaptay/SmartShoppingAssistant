@@ -44,12 +44,15 @@ import {
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
   Restaurant as RestaurantIcon,
+  AddShoppingCart as AddToCartIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import axios from 'axios'
 import { getAuth } from 'firebase/auth'
 import { app } from '@/lib/firebase'
 import { useDietaryPreferences } from '@/hooks/useDietaryPreferences'
+import { useCart } from '@/context/CartContext'
+import { useToast } from '@/context/ToastContext'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +65,16 @@ interface IngredientForOne {
 interface ParsedSuggestion {
   cleanText: string
   ingredientsForOne: IngredientForOne[] | null
+}
+
+interface StoreProduct {
+  _id: string
+  name: string
+  price: number
+  stock: number
+  image_url: string
+  category: string
+  unit?: string
 }
 
 interface BuySuggestion {
@@ -236,6 +249,8 @@ interface MealSectionProps {
 function MealSection({ meal, dietaryContext, visible }: MealSectionProps) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
+  const { addItem, updateQuantity, items } = useCart()
+  const toast = useToast()
 
   const [selected, setSelected] = useState(meal.types[0].value)
   const [mealHint, setMealHint] = useState('')
@@ -247,6 +262,7 @@ function MealSection({ meal, dietaryContext, visible }: MealSectionProps) {
   const [deductResult, setDeductResult] = useState<DeductResult | null>(null)
   const [deductError, setDeductError] = useState<string | null>(null)
   const [ingredientsOpen, setIngredientsOpen] = useState(true)
+  const [isAddingToCart, setIsAddingToCart] = useState(false)
 
   const fetchSuggestion = async (userRefinement: string) => {
     setIsLoading(true)
@@ -311,6 +327,62 @@ function MealSection({ meal, dietaryContext, visible }: MealSectionProps) {
       setDeductError(e.response?.data?.detail ?? e.message ?? 'Stok güncellenemedi.')
     } finally {
       setIsDeducting(false)
+    }
+  }
+
+  const handleAddMissingToCart = async () => {
+    if (!parsed?.ingredientsForOne?.length) return
+    setIsAddingToCart(true)
+    try {
+      const res = await axios.get('/api/products/?limit=200')
+      const products: StoreProduct[] = res.data?.items ?? (Array.isArray(res.data) ? res.data : [])
+
+      const added: string[] = []
+      const notFound: string[] = []
+      const alreadyHave: string[] = []
+
+      for (const ing of parsed.ingredientsForOne) {
+        const ingLower = ing.product_name.toLowerCase()
+        const match = products.find(
+          (p) =>
+            p.name.toLowerCase().includes(ingLower) ||
+            ingLower.includes(p.name.toLowerCase().split(' ')[0])
+        )
+
+        if (!match || match.stock === 0) {
+          notFound.push(ing.product_name)
+          continue
+        }
+
+        const neededQty = Math.max(1, Math.ceil(ing.quantity * servings))
+        const cartItem = items.find((i) => i.id === match._id)
+        const currentQty = cartItem?.quantity ?? 0
+
+        if (currentQty >= neededQty) {
+          alreadyHave.push(match.name)
+          continue
+        }
+
+        if (!cartItem) {
+          addItem({ id: match._id, name: match.name, price: match.price, image_url: match.image_url, category: match.category, unit: match.unit, stock: match.stock })
+        }
+        updateQuantity(match._id, Math.min(neededQty, match.stock))
+        added.push(match.name)
+      }
+
+      if (added.length > 0) {
+        const preview = added.slice(0, 3).join(', ') + (added.length > 3 ? `… (+${added.length - 3})` : '')
+        toast.success(`${added.length} ürün sepete eklendi: ${preview}`)
+      } else if (alreadyHave.length > 0 && notFound.length === 0) {
+        toast.success('Tüm malzemeler zaten sepetinizde!')
+      }
+      if (notFound.length > 0) {
+        toast.warning(`${notFound.length} malzeme mağazada bulunamadı: ${notFound.slice(0, 3).join(', ')}`)
+      }
+    } catch {
+      toast.error('Ürünler yüklenirken hata oluştu.')
+    } finally {
+      setIsAddingToCart(false)
     }
   }
 
@@ -641,34 +713,60 @@ function MealSection({ meal, dietaryContext, visible }: MealSectionProps) {
                       </Stack>
                     </Box>
 
-                    <Button
-                      variant="contained"
-                      disabled={isDeducting || !!deductResult}
-                      startIcon={
-                        isDeducting
-                          ? <CircularProgress size={14} color="inherit" />
-                          : <CheckIcon />
-                      }
-                      onClick={handleDeductStock}
-                      sx={{
-                        borderRadius: 2.5,
-                        fontWeight: 700,
-                        whiteSpace: 'nowrap',
-                        background: deductResult ? undefined : meal.gradient,
-                        boxShadow: deductResult ? 'none' : `0 4px 16px ${alpha(meal.color, 0.35)}`,
-                        transition: 'all 0.2s ease',
-                        '&:hover:not(:disabled)': {
-                          transform: 'translateY(-1px)',
-                          boxShadow: `0 8px 22px ${alpha(meal.color, 0.45)}`,
-                        },
-                      }}
-                    >
-                      {isDeducting
-                        ? 'Güncelleniyor…'
-                        : deductResult
-                        ? '✓ Güncellendi'
-                        : '🍳 Tarifi Yaptım — Stoğu Güncelle'}
-                    </Button>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Button
+                        variant="outlined"
+                        disabled={isAddingToCart}
+                        startIcon={
+                          isAddingToCart
+                            ? <CircularProgress size={14} color="inherit" />
+                            : <AddToCartIcon fontSize="small" />
+                        }
+                        onClick={handleAddMissingToCart}
+                        sx={{
+                          borderRadius: 2.5,
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          borderColor: meal.color,
+                          color: meal.color,
+                          '&:hover:not(:disabled)': {
+                            bgcolor: alpha(meal.color, 0.08),
+                            borderColor: meal.color,
+                            transform: 'translateY(-1px)',
+                          },
+                        }}
+                      >
+                        {isAddingToCart ? 'Ekleniyor…' : 'Eksik Malzemeleri Sepete Ekle'}
+                      </Button>
+                      <Button
+                        variant="contained"
+                        disabled={isDeducting || !!deductResult}
+                        startIcon={
+                          isDeducting
+                            ? <CircularProgress size={14} color="inherit" />
+                            : <CheckIcon />
+                        }
+                        onClick={handleDeductStock}
+                        sx={{
+                          borderRadius: 2.5,
+                          fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                          background: deductResult ? undefined : meal.gradient,
+                          boxShadow: deductResult ? 'none' : `0 4px 16px ${alpha(meal.color, 0.35)}`,
+                          transition: 'all 0.2s ease',
+                          '&:hover:not(:disabled)': {
+                            transform: 'translateY(-1px)',
+                            boxShadow: `0 8px 22px ${alpha(meal.color, 0.45)}`,
+                          },
+                        }}
+                      >
+                        {isDeducting
+                          ? 'Güncelleniyor…'
+                          : deductResult
+                          ? '✓ Güncellendi'
+                          : '🍳 Tarifi Yaptım — Stoğu Güncelle'}
+                      </Button>
+                    </Stack>
                   </Stack>
 
                   {/* Deduct errors */}

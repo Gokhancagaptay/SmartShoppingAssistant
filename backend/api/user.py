@@ -808,6 +808,72 @@ def delete_saved_address(
         raise HTTPException(status_code=500, detail=f"Adres silinemedi: {str(e)}")
 
 
+# ── Kayıtlı Kartlar (non-sensitive: sadece last4, expiry, cardHolder, label) ──
+
+class SavedCardModel(BaseModel):
+    label: str = ""
+    cardHolder: str
+    last4: str
+    expiry: str
+
+
+@router.post("/users/{user_id}/saved-cards", summary="Kart Metadata Kaydet")
+def save_card_metadata(
+    user_id: str,
+    card: SavedCardModel,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    """Kart numarası ve CVV saklanmaz; sadece son 4 hane ve isim."""
+    try:
+        decoded_token = _verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+        ref = db.reference(f"users/{user_id}/saved_cards").push()
+        ref.set(card.dict())
+        return {"success": True, "id": ref.key}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kart kaydedilemedi: {str(e)}")
+
+
+@router.get("/users/{user_id}/saved-cards", summary="Kayıtlı Kartları Listele")
+def list_saved_cards(
+    user_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    try:
+        decoded_token = _verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+        data = db.reference(f"users/{user_id}/saved_cards").get()
+        if not data:
+            return []
+        return [{"id": k, **v} for k, v in data.items()]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kartlar alınamadı: {str(e)}")
+
+
+@router.delete("/users/{user_id}/saved-cards/{card_id}", summary="Kayıtlı Kartı Sil")
+def delete_saved_card(
+    user_id: str,
+    card_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    try:
+        decoded_token = _verify_id_token(credentials.credentials)
+        if decoded_token["uid"] != user_id:
+            raise HTTPException(status_code=403, detail="Yetki hatası")
+        db.reference(f"users/{user_id}/saved_cards/{card_id}").delete()
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kart silinemedi: {str(e)}")
+
+
 # ─────────────────────────────────────────────
 #  Tarif Stok Düşümü
 # ─────────────────────────────────────────────

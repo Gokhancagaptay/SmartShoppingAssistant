@@ -8,6 +8,7 @@ import { AppThemeProvider } from '@/context/ThemeContext'
 import { CartProvider } from '@/context/CartContext'
 import { ToastProvider } from '@/context/ToastContext'
 import { FavoritesProvider } from '@/context/FavoritesContext'
+import ErrorBoundary from '@/components/ErrorBoundary'
 
 /**
  * Uygulamanın tüm global sağlayıcılarını tek bir bileşende toplar.
@@ -36,14 +37,16 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <AppRouterCacheProvider>
       <QueryClientProvider client={queryClient}>
         <AppThemeProvider>
-          <CartProvider>
-            <FavoritesProvider>
-              <ToastProvider>
-                <CssBaseline />
-                {children}
-              </ToastProvider>
-            </FavoritesProvider>
-          </CartProvider>
+          <ErrorBoundary>
+            <CartProvider>
+              <FavoritesProvider>
+                <ToastProvider>
+                  <CssBaseline />
+                  {children}
+                </ToastProvider>
+              </FavoritesProvider>
+            </CartProvider>
+          </ErrorBoundary>
         </AppThemeProvider>
       </QueryClientProvider>
     </AppRouterCacheProvider>

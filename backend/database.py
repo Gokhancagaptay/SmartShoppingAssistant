@@ -12,6 +12,7 @@ mongo_db = client.online_market
 users_collection = mongo_db.users
 products_collection = mongo_db.products
 reviews_collection = mongo_db.reviews
+payment_intents_collection = mongo_db.payment_intents
 
 # Logging ayarları
 logging.basicConfig(level=logging.INFO)

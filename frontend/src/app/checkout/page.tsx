@@ -102,8 +102,6 @@ export default function CheckoutPage() {
     return a.currentUser?.getIdToken() ?? null
   }, [])
 
-  const cardsStorageKey = (uid: string) => `market_ai_cards_${uid}`
-
   // ── Kayıtlı adresleri ve kartları kullanıcıya özel yükle ──
   useEffect(() => {
     const load = async () => {
@@ -114,30 +112,21 @@ export default function CheckoutPage() {
         setCurrentUid(u.uid)
         const t = await u.getIdToken()
 
-        // Adresler — API'den, uid'e göre (güvenli)
+        // Adresler — API'den
         const r = await axios.get(`/api/auth/users/${u.uid}/saved-addresses`, { headers:{ Authorization:`Bearer ${t}` } })
         const list: SavedAddress[] = Array.isArray(r.data) ? r.data : []
         setSavedAddresses(list)
         if (list.length > 0) setSelectedAddressId(list[0].id)
 
-        // Kartlar — localStorage'dan, uid'e özel key ile
-        const raw = localStorage.getItem(cardsStorageKey(u.uid))
-        if (raw) {
-          const cards: SavedCard[] = JSON.parse(raw)
-          setSavedCards(cards)
-          if (cards.length > 0) setSelectedCardId(cards[0].id)
-        }
+        // Kartlar — API'den (artık localStorage değil)
+        const cr = await axios.get(`/api/auth/users/${u.uid}/saved-cards`, { headers:{ Authorization:`Bearer ${t}` } })
+        const cards: SavedCard[] = Array.isArray(cr.data) ? cr.data : []
+        setSavedCards(cards)
+        if (cards.length > 0) setSelectedCardId(cards[0].id)
       } catch { /* sessizce başarısız */ }
     }
     load()
   }, [])
-
-  const saveCardsToStorage = (cards: SavedCard[]) => {
-    if (currentUid) {
-      localStorage.setItem(cardsStorageKey(currentUid), JSON.stringify(cards))
-    }
-    setSavedCards(cards)
-  }
 
   // ── Adres diyalogu ──────────────────────────────────────────────────────────
 
@@ -198,33 +187,48 @@ export default function CheckoutPage() {
       setCardForm(prev => ({ ...prev, [field]: v }))
     }
 
-  const handleSaveNewCard = () => {
+  const handleSaveNewCard = async () => {
     const raw = cardForm.cardNumber.replace(/\s/g,'')
-    if (raw.length < 16)          { setCardFormError('Geçerli bir kart numarası girin (16 hane).'); return }
+    if (raw.length < 16)           { setCardFormError('Geçerli bir kart numarası girin (16 hane).'); return }
     if (!cardForm.cardHolder.trim()){ setCardFormError('Kart sahibi adını girin.'); return }
     if (cardForm.expiry.length < 5) { setCardFormError('Son kullanma tarihini girin (AA/YY).'); return }
     if (cardForm.cvv.length < 3)    { setCardFormError('CVV numarasını girin (3 hane).'); return }
 
     setCardFormError(null)
-    const newCard: SavedCard = {
-      id: `card-${Date.now()}`,
+    const payload = {
       label: cardForm.label.trim() || `Kart ...${raw.slice(-4)}`,
       cardHolder: cardForm.cardHolder,
       last4: raw.slice(-4),
       expiry: cardForm.expiry,
     }
-    const updated = [...savedCards, newCard]
-    saveCardsToStorage(updated)
-    setSelectedCardId(newCard.id)
-    setCardDialogOpen(false)
-    setCardForm(emptyCard)
+    try {
+      const token = await getToken()
+      const uid = getAuth(app).currentUser?.uid
+      if (!uid || !token) { setCardFormError('Oturum hatası, lütfen tekrar giriş yapın.'); return }
+      const res = await axios.post(`/api/auth/users/${uid}/saved-cards`, payload, { headers:{ Authorization:`Bearer ${token}` } })
+      const newCard: SavedCard = { id: res.data.id, ...payload }
+      const updated = [...savedCards, newCard]
+      setSavedCards(updated)
+      setSelectedCardId(newCard.id)
+      setCardDialogOpen(false)
+      setCardForm(emptyCard)
+    } catch {
+      setCardFormError('Kart kaydedilemedi. Lütfen tekrar deneyin.')
+    }
   }
 
-  const handleDeleteCard = (id: string, e: React.MouseEvent) => {
+  const handleDeleteCard = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    try {
+      const token = await getToken()
+      const uid = getAuth(app).currentUser?.uid
+      if (uid && token) {
+        await axios.delete(`/api/auth/users/${uid}/saved-cards/${id}`, { headers:{ Authorization:`Bearer ${token}` } })
+      }
+    } catch { /* ignore */ }
     const updated = savedCards.filter(c => c.id !== id)
-    saveCardsToStorage(updated)
-    if (selectedCardId === id) setSelectedCardId(updated[0]?.id ?? 'new')
+    setSavedCards(updated)
+    if (selectedCardId === id) setSelectedCardId(updated[0]?.id ?? 'cash')
   }
 
   // ── Sipariş gönder ─────────────────────────────────────────────────────────
@@ -248,15 +252,31 @@ export default function CheckoutPage() {
     setOrderError(null)
     try {
       const token = await getToken()
+      if (!token) throw new Error('auth')
+
+      // Ödeme altyapısına hazırlık: Payment Intent oluştur
+      let paymentIntentId: string | undefined
+      if (selectedCardId !== 'cash') {
+        const intentRes = await axios.post(
+          '/api/payment/create-intent',
+          { amount: Math.round(total * 100), currency: 'TRY', payment_method: 'card', description: `Sipariş - ${items.length} ürün` },
+          { headers:{ Authorization:`Bearer ${token}` } }
+        )
+        paymentIntentId = intentRes.data.intent_id
+        // Ödemeyi onayla (gerçek entegrasyonda burada Stripe/Iyzico işlemi yapılır)
+        await axios.post(`/api/payment/${paymentIntentId}/confirm`, {}, { headers:{ Authorization:`Bearer ${token}` } })
+      }
+
       const res = await axios.post(
         '/api/auth/orders',
         {
           address: { title: addr.title, fullName: addr.fullName, phone: addr.phone, city: addr.city, district: addr.district, detail: addr.detail },
           payment_method: selectedCardId === 'cash' ? 'cash' : 'card',
+          payment_intent_id: paymentIntentId,
           items: items.map(i => ({ id:i.id, name:i.name, price:i.price, quantity:i.quantity, category:i.category, image_url:i.image_url, unit:i.unit||'' })),
           total_price: total,
         },
-        token ? { headers:{ Authorization:`Bearer ${token}` } } : {}
+        { headers:{ Authorization:`Bearer ${token}` } }
       )
       const newOrderId = res.data.order_id || `ORD-${Date.now()}`
       setOrderSummary({ total, itemCount: items.length })
