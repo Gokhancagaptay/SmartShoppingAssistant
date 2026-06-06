@@ -20,10 +20,22 @@ router = APIRouter(tags=["auth"])
 security = HTTPBearer()
 
 
+def _verify_id_token(token: str) -> dict:
+    """Docker container saat kaymasına (clock skew) karşı 1 saniyelik retry."""
+    import time
+    try:
+        return auth.verify_id_token(token)
+    except auth.InvalidIdTokenError as e:
+        if 'too early' in str(e):
+            time.sleep(1)
+            return auth.verify_id_token(token)
+        raise
+
+
 def _decode_uid_or_401(credentials: HTTPAuthorizationCredentials, path_user_id: str) -> dict:
     """Bearer JWT doğrular; hatalarda 401 (RTDB öncesi 500 dönmesin)."""
     try:
-        decoded = auth.verify_id_token(credentials.credentials)
+        decoded = _verify_id_token(credentials.credentials)
     except Exception:
         raise HTTPException(
             status_code=401,
@@ -59,7 +71,7 @@ def _normalize_dietary_prefs(data) -> dict:
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = _verify_id_token(token)
         return decoded_token
     except Exception as e:
         print(f"[AUTH ERROR] {type(e).__name__}: {e}")
@@ -102,7 +114,7 @@ class UserUpdate(BaseModel):
 async def register(user: UserRegister, credentials: HTTPAuthorizationCredentials = Depends(security)):
     # Token'ı doğrulayarak UID'yi al (kullanıcı frontend'de zaten oluşturuldu)
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials)
+        decoded_token = _verify_id_token(credentials.credentials)
         user_id = decoded_token["uid"]
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Geçersiz token: {str(e)}")
@@ -178,7 +190,7 @@ async def login(user: UserLogin):
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = _verify_id_token(token)
         user_id = decoded_token.get("uid")
 
         if not user_id:
@@ -229,7 +241,7 @@ async def get_user_info(current_user: dict = Depends(get_current_user)):
 async def update_profile(user_data: UserUpdate, credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = _verify_id_token(token)
         user_id = decoded_token.get("uid")
         
         if not user_id:
@@ -307,7 +319,7 @@ def forgot_password(email: str):
 def verify_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     try:
-        decoded_token = auth.verify_id_token(token)
+        decoded_token = _verify_id_token(token)
         claims = auth.get_user(decoded_token["uid"]).custom_claims
         if not claims or claims.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Bu işlem için yetkiniz yok!")
@@ -514,7 +526,7 @@ async def create_order(
     logger = logging.getLogger("order")
 
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials)
+        decoded_token = _verify_id_token(credentials.credentials)
         uid = decoded_token["uid"]
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Geçersiz token: {str(e)}")
@@ -613,7 +625,7 @@ def save_checkout_address(
 ):
     """Kullanıcının checkout adresini Firebase'e kaydeder."""
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials)
+        decoded_token = _verify_id_token(credentials.credentials)
         if decoded_token["uid"] != user_id:
             raise HTTPException(status_code=403, detail="Yetki hatası")
         ref = db.reference(f"users/{user_id}/saved_addresses").push()
@@ -632,7 +644,7 @@ def list_saved_addresses(
 ):
     """Kullanıcının kayıtlı checkout adreslerini döner."""
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials)
+        decoded_token = _verify_id_token(credentials.credentials)
         if decoded_token["uid"] != user_id:
             raise HTTPException(status_code=403, detail="Yetki hatası")
         ref = db.reference(f"users/{user_id}/saved_addresses")
@@ -694,7 +706,7 @@ def delete_saved_address(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials)
+        decoded_token = _verify_id_token(credentials.credentials)
         if decoded_token["uid"] != user_id:
             raise HTTPException(status_code=403, detail="Yetki hatası")
         db.reference(f"users/{user_id}/saved_addresses/{address_id}").delete()
@@ -746,7 +758,7 @@ async def deduct_recipe_stock(
     Düşüm sonrası azalan veya biten ürünleri ve mağazada satılanları döner.
     """
     try:
-        decoded_token = auth.verify_id_token(credentials.credentials)
+        decoded_token = _verify_id_token(credentials.credentials)
         if decoded_token["uid"] != user_id:
             raise HTTPException(status_code=403, detail="Yetki hatası")
 

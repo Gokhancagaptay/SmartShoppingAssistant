@@ -118,53 +118,29 @@ export default function AdminPage() {
   }, [])
 
   // ── Rol kontrolü — sadece gerçek user varsa çalış ──
-  const { data: me, isLoading: meLoading } = useQuery('admin-me', async () => {
+  const { data: me, isLoading: meLoading, isError: meError, refetch: refetchMe } = useQuery('admin-me', async () => {
     const headers = await getAuthHeader()
     const res = await axios.get('/api/auth/me', { headers })
     return res.data
-  }, { retry: false, enabled: !!firebaseUser })
+  }, { retry: 1, enabled: !!firebaseUser })
 
-  if (firebaseUser === undefined || meLoading) {
-    return (
-      <AuthGuard>
-        <MainLayout>
-          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-            <CircularProgress />
-          </Box>
-        </MainLayout>
-      </AuthGuard>
-    )
-  }
+  const isAdmin = me?.role === 'admin'
 
-  if (me?.role !== 'admin') {
-    return (
-      <AuthGuard>
-        <MainLayout>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 2 }}>
-            <AdminIcon sx={{ fontSize: 64, color: 'error.main', opacity: 0.5 }} />
-            <Typography variant="h5" fontWeight={700} color="error">Erişim Reddedildi</Typography>
-            <Typography color="text.secondary">Bu sayfaya erişmek için admin yetkisi gereklidir.</Typography>
-          </Box>
-        </MainLayout>
-      </AuthGuard>
-    )
-  }
-
-  // ── Queries ──
+  // ── Admin queries — rol onaylandıktan sonra çalışır ──
   const { data: stats } = useQuery('admin-stats', async () => {
     const headers = await getAuthHeader()
     const res = await axios.get('/api/admin/dashboard/stats', { headers })
     return res.data
-  })
+  }, { enabled: isAdmin })
 
   const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery(
     'admin-users',
     async () => {
       const headers = await getAuthHeader()
       const res = await axios.get('/api/admin/users', { headers })
-      return res.data
+      return Array.isArray(res.data) ? res.data : res.data.users || []
     },
-    { enabled: activeTab === 0, retry: false }
+    { enabled: isAdmin && activeTab === 0, retry: false }
   )
 
   const { data: products = [], isLoading: productsLoading, refetch: refetchProducts } = useQuery<Product[]>(
@@ -173,7 +149,7 @@ export default function AdminPage() {
       const res = await axios.get('/api/products/')
       return Array.isArray(res.data) ? res.data : res.data.products || []
     },
-    { enabled: activeTab === 1 }
+    { enabled: isAdmin && activeTab === 1 }
   )
 
   // ── Mutations ──
@@ -213,6 +189,68 @@ export default function AdminPage() {
     { onSuccess: () => { queryClient.invalidateQueries('admin-products'); setDeleteConfirm(null) } }
   )
 
+  // ── Filtered lists ──
+  const filteredUsers = useMemo(() =>
+    userSearch ? users.filter((u: any) =>
+      `${u.name} ${u.surname} ${u.email}`.toLowerCase().includes(userSearch.toLowerCase())
+    ) : users
+  , [users, userSearch])
+
+  const filteredProducts = useMemo(() => {
+    let list = products
+    if (catFilter) list = list.filter(p => p.category === catFilter)
+    if (productSearch) list = list.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
+    return list
+  }, [products, productSearch, catFilter])
+
+  // ── Early returns — tüm hook'lardan SONRA ──
+  if (firebaseUser === undefined || meLoading) {
+    return (
+      <AuthGuard>
+        <MainLayout>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+            <CircularProgress />
+          </Box>
+        </MainLayout>
+      </AuthGuard>
+    )
+  }
+
+  // API çağrısı başarısız (backend kapalı, token hatası, ağ sorunu)
+  if (meError) {
+    return (
+      <AuthGuard>
+        <MainLayout>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 2 }}>
+            <WarningIcon sx={{ fontSize: 64, color: 'warning.main', opacity: 0.7 }} />
+            <Typography variant="h5" fontWeight={700} color="warning.main">Bağlantı Hatası</Typography>
+            <Typography color="text.secondary" textAlign="center">
+              Admin paneli yüklenemedi. Backend çalışıyor mu?
+            </Typography>
+            <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => refetchMe()}>
+              Tekrar Dene
+            </Button>
+          </Box>
+        </MainLayout>
+      </AuthGuard>
+    )
+  }
+
+  // API çalıştı ama kullanıcı admin değil
+  if (!isAdmin) {
+    return (
+      <AuthGuard>
+        <MainLayout>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 2 }}>
+            <AdminIcon sx={{ fontSize: 64, color: 'error.main', opacity: 0.5 }} />
+            <Typography variant="h5" fontWeight={700} color="error">Erişim Reddedildi</Typography>
+            <Typography color="text.secondary">Bu sayfaya erişmek için admin yetkisi gereklidir.</Typography>
+          </Box>
+        </MainLayout>
+      </AuthGuard>
+    )
+  }
+
   // ── Handlers ──
   const closeDialog = () => {
     setProductDialog(p => ({ ...p, open: false }))
@@ -244,26 +282,12 @@ export default function AdminPage() {
     else if (productDialog.product) updateProduct.mutate({ id: productDialog.product._id, data: form })
   }
 
-  // ── Filtered lists ──
-  const filteredUsers = useMemo(() =>
-    userSearch ? users.filter((u: any) =>
-      `${u.name} ${u.surname} ${u.email}`.toLowerCase().includes(userSearch.toLowerCase())
-    ) : users
-  , [users, userSearch])
-
-  const filteredProducts = useMemo(() => {
-    let list = products
-    if (catFilter) list = list.filter(p => p.category === catFilter)
-    if (productSearch) list = list.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()))
-    return list
-  }, [products, productSearch, catFilter])
-
   // ── Stats ──
   const statCards = [
-    { label: 'Toplam Kullanıcı', value: stats?.total_users ?? '—', icon: <PeopleIcon />, gradient: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#6366F1' },
-    { label: 'Toplam Ürün', value: (products.length || stats?.total_products) ?? '—', icon: <ProductIcon />, gradient: 'linear-gradient(135deg,#10B981,#0D9488)', color: '#10B981' },
-    { label: 'Toplam Sipariş', value: stats?.total_orders ?? '—', icon: <OrderIcon />, gradient: 'linear-gradient(135deg,#F59E0B,#EF4444)', color: '#F59E0B' },
-    { label: 'Toplam Gelir', value: stats?.total_revenue ? `₺${Number(stats.total_revenue).toLocaleString('tr-TR')}` : '—', icon: <RevenueIcon />, gradient: 'linear-gradient(135deg,#3B82F6,#6366F1)', color: '#3B82F6' },
+    { label: 'Toplam Kullanıcı', value: stats?.totalUsers ?? '—', icon: <PeopleIcon />, gradient: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#6366F1' },
+    { label: 'Toplam Ürün', value: products.length || '—', icon: <ProductIcon />, gradient: 'linear-gradient(135deg,#10B981,#0D9488)', color: '#10B981' },
+    { label: 'Aktif Sipariş', value: stats?.activeOrdersCount ?? '—', icon: <OrderIcon />, gradient: 'linear-gradient(135deg,#F59E0B,#EF4444)', color: '#F59E0B' },
+    { label: 'Toplam Gelir', value: stats?.totalCompletedRevenue ? `₺${Number(stats.totalCompletedRevenue).toLocaleString('tr-TR')}` : '—', icon: <RevenueIcon />, gradient: 'linear-gradient(135deg,#3B82F6,#6366F1)', color: '#3B82F6' },
   ]
 
   const isMutating = createProduct.isLoading || updateProduct.isLoading

@@ -49,8 +49,9 @@ export default function LoginPage() {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (data?.role === 'admin') redirectTo = '/admin'
-      } catch {
-        // role fetch başarısız olursa normal home'a git
+      } catch (err) {
+        console.error('[Login] /api/auth/me başarısız:', err)
+        // Backend erişilemez → role belirlenemiyor, home'a git
       }
       router.push(redirectTo)
     } catch (err: any) {
