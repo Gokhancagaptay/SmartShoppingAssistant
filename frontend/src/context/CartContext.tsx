@@ -12,6 +12,7 @@ export interface CartItem {
   image_url: string
   category: string
   unit?: string
+  stock?: number
 }
 
 interface CartContextValue {
@@ -58,8 +59,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           setItems([])
         }
       } else {
-        // Kullanıcı çıkış yaptı — sepeti temizle
-        setUid(null)
+        // Kullanıcı çıkış yaptı — localStorage'daki sepeti sil, sonra state'i temizle
+        setUid((prevUid) => {
+          if (prevUid) localStorage.removeItem(storageKey(prevUid))
+          return null
+        })
         setItems([])
       }
       setHydrated(true)
@@ -78,6 +82,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems((prev) => {
       const existing = prev.find((i) => i.id === newItem.id)
       if (existing) {
+        const limit = newItem.stock ?? Infinity
+        if (existing.quantity >= limit) return prev
         return prev.map((i) =>
           i.id === newItem.id ? { ...i, quantity: i.quantity + 1 } : i
         )
@@ -95,7 +101,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setItems((prev) => prev.filter((i) => i.id !== id))
     } else {
       setItems((prev) =>
-        prev.map((i) => (i.id === id ? { ...i, quantity } : i))
+        prev.map((i) => {
+          if (i.id !== id) return i
+          const capped = i.stock ? Math.min(quantity, i.stock) : quantity
+          return { ...i, quantity: capped }
+        })
       )
     }
   }, [])

@@ -16,6 +16,7 @@ import Link from 'next/link'
 import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
 import { useCart } from '@/context/CartContext'
+import { useToast } from '@/context/ToastContext'
 
 interface Product {
   _id: string
@@ -41,6 +42,7 @@ const ITEMS_PER_PAGE = 12
 
 export default function ProductsPage() {
   const { addItem, totalCount, items } = useCart()
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [page, setPage] = useState(1)
@@ -65,7 +67,15 @@ export default function ProductsPage() {
     { keepPreviousData: true }
   )
 
+  // Sepetteki ürün adedi
+  const getCartQty = (id: string) => items.find((i) => i.id === id)?.quantity || 0
+
   const handleAddToCart = (product: Product) => {
+    const currentQty = getCartQty(product._id)
+    if (currentQty >= product.stock) {
+      toast.warning(`"${product.name}" için maksimum stok adedine ulaştınız (${product.stock} adet).`)
+      return
+    }
     addItem({
       id: product._id,
       name: product.name,
@@ -73,6 +83,7 @@ export default function ProductsPage() {
       image_url: product.image_url,
       category: product.category,
       unit: product.unit,
+      stock: product.stock,
     })
     setJustAdded((prev) => ({ ...prev, [product._id]: true }))
     setTimeout(() => setJustAdded((prev) => ({ ...prev, [product._id]: false })), 1200)
@@ -84,9 +95,6 @@ export default function ProductsPage() {
   )
   const paginatedProducts = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
   const pageCount = Math.ceil(filtered.length / ITEMS_PER_PAGE)
-
-  // Sepetteki ürün adedi
-  const getCartQty = (id: string) => items.find((i) => i.id === id)?.quantity || 0
 
   return (
     <AuthGuard>

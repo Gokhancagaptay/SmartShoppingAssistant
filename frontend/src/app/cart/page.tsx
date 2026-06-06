@@ -281,6 +281,7 @@ export default function CartPage() {
                           <IconButton
                             size="small"
                             onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            disabled={item.stock != null && item.quantity >= item.stock}
                             sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5, width: 30, height: 30 }}
                           >
                             <AddIcon sx={{ fontSize: 16 }} />

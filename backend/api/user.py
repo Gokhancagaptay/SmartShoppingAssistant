@@ -553,6 +553,28 @@ async def create_order(
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Geçersiz token: {str(e)}")
 
+    # Stok yeterlilik kontrolü — sipariş yazmadan önce
+    if order_data.items:
+        insufficient = []
+        for item in order_data.items:
+            try:
+                product = await products_collection.find_one(
+                    {"_id": ObjectId(item.id)}, {"stock": 1, "name": 1}
+                )
+                if not product:
+                    insufficient.append(f"{item.name}: ürün bulunamadı")
+                elif product.get("stock", 0) < item.quantity:
+                    insufficient.append(
+                        f"{item.name}: stokta {product.get('stock', 0)} adet var, {item.quantity} adet istendi"
+                    )
+            except Exception:
+                insufficient.append(f"{item.name}: stok doğrulanamadı")
+        if insufficient:
+            raise HTTPException(
+                status_code=400,
+                detail="Yetersiz stok: " + "; ".join(insufficient)
+            )
+
     order_id = f"ORD-{uuid.uuid4().hex[:10].upper()}"
     order_doc = {
         "order_id": order_id,
@@ -604,10 +626,12 @@ async def create_order(
     # ── Mağaza stoğunu düşür (MongoDB) ─────────────────────────────────────────
     for item in order_data.items:
         try:
-            await products_collection.update_one(
-                {"_id": ObjectId(item.id)},
+            result = await products_collection.update_one(
+                {"_id": ObjectId(item.id), "stock": {"$gte": item.quantity}},
                 {"$inc": {"stock": -item.quantity}}
             )
+            if result.matched_count == 0:
+                logger.warning(f"Stok güncellenemedi (race condition?): {item.name}")
         except Exception as e:
             logger.error(f"Magaza stok dusulemedi [{item.name}]: {str(e)}")
 
