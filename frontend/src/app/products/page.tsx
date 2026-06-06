@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from 'react'
 import {
   Container, Box, Typography, Grid, Card, CardMedia, CardContent,
-  CardActions, Button, TextField, InputAdornment, Chip, Stack,
-  Skeleton, Alert, Pagination, Badge, Avatar, Fab, Zoom,
+  CardActions, Button, TextField, InputAdornment, Chip, Stack, Rating,
+  Skeleton, Alert, Pagination, Badge, Avatar, Fab, Zoom, IconButton, Tooltip,
 } from '@mui/material'
 import {
   Search as SearchIcon, AddShoppingCart as CartAddIcon,
   ShoppingCart as CartIcon, CheckCircle as CheckIcon,
+  Favorite as FavoriteIcon, FavoriteBorder as FavoriteBorderIcon,
+  OpenInNew as DetailIcon,
 } from '@mui/icons-material'
 import { useQuery } from 'react-query'
 import axios from 'axios'
@@ -17,6 +19,7 @@ import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
 import { useCart } from '@/context/CartContext'
 import { useToast } from '@/context/ToastContext'
+import { useFavorites } from '@/context/FavoritesContext'
 
 interface Product {
   _id: string
@@ -26,6 +29,16 @@ interface Product {
   image_url: string
   category: string
   unit?: string
+  avg_rating: number
+  review_count: number
+}
+
+interface PaginatedProducts {
+  items: Product[]
+  total: number
+  page: number
+  pages: number
+  limit: number
 }
 
 const CATEGORIES = [
@@ -43,31 +56,47 @@ const ITEMS_PER_PAGE = 12
 export default function ProductsPage() {
   const { addItem, totalCount, items } = useCart()
   const toast = useToast()
+  const { isFavorite, toggleFavorite } = useFavorites()
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [category, setCategory] = useState('')
   const [page, setPage] = useState(1)
   const [justAdded, setJustAdded] = useState<Record<string, boolean>>({})
   const [showFab, setShowFab] = useState(false)
 
-  // Aşağı kaydırınca FAB'ı göster
   useEffect(() => {
     const onScroll = () => setShowFab(window.scrollY > 200)
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const { data: products = [], isLoading, isError, error } = useQuery<Product[]>(
-    ['products', category],
+  // Debounce search → reset page to 1
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  const { data, isLoading, isError, error } = useQuery<PaginatedProducts>(
+    ['products', category, debouncedSearch, page],
     async () => {
       const params = new URLSearchParams()
+      params.set('page', page.toString())
+      params.set('limit', ITEMS_PER_PAGE.toString())
       if (category) params.set('category', category)
+      if (debouncedSearch) params.set('search', debouncedSearch)
       const res = await axios.get(`/api/products/?${params.toString()}`)
-      return Array.isArray(res.data) ? res.data : res.data.products || []
+      return res.data
     },
-    { keepPreviousData: true }
+    { keepPreviousData: true },
   )
 
-  // Sepetteki ürün adedi
+  const products = data?.items ?? []
+  const pageCount = data?.pages ?? 1
+  const totalProducts = data?.total ?? 0
+
   const getCartQty = (id: string) => items.find((i) => i.id === id)?.quantity || 0
 
   const handleAddToCart = (product: Product) => {
@@ -77,24 +106,13 @@ export default function ProductsPage() {
       return
     }
     addItem({
-      id: product._id,
-      name: product.name,
-      price: product.price,
-      image_url: product.image_url,
-      category: product.category,
-      unit: product.unit,
-      stock: product.stock,
+      id: product._id, name: product.name, price: product.price,
+      image_url: product.image_url, category: product.category,
+      unit: product.unit, stock: product.stock,
     })
     setJustAdded((prev) => ({ ...prev, [product._id]: true }))
     setTimeout(() => setJustAdded((prev) => ({ ...prev, [product._id]: false })), 1200)
   }
-
-  // Arama client-side yapılır
-  const filtered = products.filter((p) =>
-    search ? p.name.toLowerCase().includes(search.toLowerCase()) : true
-  )
-  const paginatedProducts = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
-  const pageCount = Math.ceil(filtered.length / ITEMS_PER_PAGE)
 
   return (
     <AuthGuard>
@@ -105,7 +123,7 @@ export default function ProductsPage() {
             <Box>
               <Typography variant="h4" fontWeight={800}>Ürünler</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {isLoading ? 'Yükleniyor…' : `${filtered.length} ürün listelendi`}
+                {isLoading ? 'Yükleniyor…' : `${totalProducts} ürün listelendi`}
               </Typography>
             </Box>
             {totalCount > 0 && (
@@ -113,11 +131,7 @@ export default function ProductsPage() {
                 variant="contained"
                 component={Link}
                 href="/cart"
-                startIcon={
-                  <Badge badgeContent={totalCount} color="error">
-                    <CartIcon />
-                  </Badge>
-                }
+                startIcon={<Badge badgeContent={totalCount} color="error"><CartIcon /></Badge>}
                 sx={{ borderRadius: 2.5 }}
               >
                 Sepete Git
@@ -130,7 +144,7 @@ export default function ProductsPage() {
             fullWidth
             placeholder="Ürün ara… (örn: elma, süt)"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            onChange={(e) => setSearch(e.target.value)}
             sx={{ mb: 2.5, maxWidth: 520 }}
             InputProps={{
               startAdornment: (
@@ -175,79 +189,47 @@ export default function ProductsPage() {
             {isLoading
               ? Array.from({ length: 8 }).map((_, i) => (
                   <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
-                    <Skeleton variant="rectangular" height={320} sx={{ borderRadius: 3 }} />
+                    <Skeleton variant="rectangular" height={340} sx={{ borderRadius: 3 }} />
                   </Grid>
                 ))
-              : paginatedProducts.map((product) => {
+              : products.map((product) => {
                   const cartQty = getCartQty(product._id)
                   const added = justAdded[product._id]
+                  const fav = isFavorite(product._id)
                   return (
                     <Grid item xs={12} sm={6} md={4} lg={3} key={product._id}>
                       <Card
                         elevation={0}
                         sx={{
-                          height: '100%',
-                          display: 'flex',
-                          flexDirection: 'column',
+                          height: '100%', display: 'flex', flexDirection: 'column',
                           border: '1px solid',
                           borderColor: cartQty > 0 ? 'primary.main' : 'divider',
-                          transition: 'all 0.25s ease',
-                          overflow: 'hidden',
-                          '&:hover': {
-                            transform: 'translateY(-5px)',
-                            boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
-                            borderColor: 'primary.main',
-                          },
+                          transition: 'all 0.25s ease', overflow: 'hidden',
+                          '&:hover': { transform: 'translateY(-5px)', boxShadow: '0 16px 40px rgba(0,0,0,0.12)', borderColor: 'primary.main' },
                         }}
                       >
-                        {/* Görsel */}
                         <Box sx={{ position: 'relative', overflow: 'hidden' }}>
                           <CardMedia
                             component="img"
                             height="175"
                             image={product.image_url || `https://placehold.co/300x175/E8E8FF/6366F1?text=${encodeURIComponent(product.name)}`}
                             alt={product.name}
-                            sx={{
-                              objectFit: 'cover',
-                              transition: 'transform 0.3s',
-                              '.MuiCard-root:hover &': { transform: 'scale(1.05)' },
-                            }}
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                `https://placehold.co/300x175/E8E8FF/6366F1?text=${encodeURIComponent(product.name)}`
-                            }}
+                            sx={{ objectFit: 'cover', transition: 'transform 0.3s', '.MuiCard-root:hover &': { transform: 'scale(1.05)' } }}
+                            onError={(e) => { (e.target as HTMLImageElement).src = `https://placehold.co/300x175/E8E8FF/6366F1?text=${encodeURIComponent(product.name)}` }}
                           />
                           {/* Stok etiketi */}
                           <Chip
-                            label={
-                              product.stock === 0
-                                ? 'Tükendi'
-                                : product.stock <= 5
-                                ? `Son ${product.stock} adet!`
-                                : 'Stokta'
-                            }
+                            label={product.stock === 0 ? 'Tükendi' : product.stock <= 5 ? `Son ${product.stock} adet!` : 'Stokta'}
                             size="small"
                             sx={{
                               position: 'absolute', top: 8, right: 8,
-                              bgcolor:
-                                product.stock === 0
-                                  ? 'error.main'
-                                  : product.stock <= 5
-                                  ? 'warning.main'
-                                  : 'success.main',
+                              bgcolor: product.stock === 0 ? 'error.main' : product.stock <= 5 ? 'warning.main' : 'success.main',
                               color: 'white', fontWeight: 700, fontSize: 11,
                             }}
                           />
                           {/* Sepet adedi rozeti */}
                           {cartQty > 0 && (
-                            <Avatar
-                              sx={{
-                                position: 'absolute', top: 8, left: 8,
-                                width: 28, height: 28, fontSize: 13, fontWeight: 800,
-                                background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-                                boxShadow: '0 2px 8px rgba(99,102,241,0.5)',
-                              }}
-                            >
+                            <Avatar sx={{ position: 'absolute', top: 8, left: 8, width: 28, height: 28, fontSize: 13, fontWeight: 800, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', boxShadow: '0 2px 8px rgba(99,102,241,0.5)' }}>
                               {cartQty}
                             </Avatar>
                           )}
@@ -261,33 +243,45 @@ export default function ProductsPage() {
                             {CATEGORIES.find((c) => c.value === product.category)?.emoji}{' '}
                             {CATEGORIES.find((c) => c.value === product.category)?.label || product.category}
                           </Typography>
-                          <Typography variant="h6" fontWeight={800} color="primary" sx={{ mt: 0.5 }}>
+                          {product.avg_rating > 0 && (
+                            <Stack direction="row" alignItems="center" spacing={0.5} mt={0.25}>
+                              <Rating value={product.avg_rating} readOnly size="small" precision={0.5} />
+                              <Typography variant="caption" color="text.secondary">({product.review_count})</Typography>
+                            </Stack>
+                          )}
+                          <Typography variant="h6" fontWeight={800} color="primary" sx={{ mt: 0.25 }}>
                             {product.price.toFixed(2)} ₺
                             {product.unit && (
-                              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-                                / {product.unit}
-                              </Typography>
+                              <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>/ {product.unit}</Typography>
                             )}
                           </Typography>
                         </CardContent>
 
-                        <CardActions sx={{ px: 2, pb: 2, pt: 0 }}>
+                        <CardActions sx={{ px: 2, pb: 2, pt: 0, gap: 0.5 }}>
                           <Button
                             variant={added ? 'outlined' : cartQty > 0 ? 'outlined' : 'contained'}
-                            fullWidth
                             size="small"
                             startIcon={added ? <CheckIcon fontSize="small" /> : <CartAddIcon fontSize="small" />}
                             disabled={product.stock === 0}
                             onClick={() => handleAddToCart(product)}
-                            sx={{
-                              borderRadius: 2,
-                              py: 0.75,
-                              transition: 'all 0.15s',
-                              ...(added && { borderColor: 'success.main', color: 'success.main' }),
-                            }}
+                            sx={{ flex: 1, borderRadius: 2, py: 0.75, transition: 'all 0.15s', ...(added && { borderColor: 'success.main', color: 'success.main' }) }}
                           >
                             {added ? 'Eklendi!' : cartQty > 0 ? `Tekrar Ekle (${cartQty})` : 'Sepete Ekle'}
                           </Button>
+                          <Tooltip title={fav ? 'Favorilerden Çıkar' : 'Favorilere Ekle'}>
+                            <IconButton
+                              size="small"
+                              onClick={() => toggleFavorite({ id: product._id, name: product.name, price: product.price, image_url: product.image_url, category: product.category, stock: product.stock, unit: product.unit, avg_rating: product.avg_rating, review_count: product.review_count })}
+                              sx={{ color: fav ? 'error.main' : 'text.disabled', border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}
+                            >
+                              {fav ? <FavoriteIcon fontSize="small" /> : <FavoriteBorderIcon fontSize="small" />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Ürün Detayı">
+                            <IconButton size="small" component={Link} href={`/products/${product._id}`} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1.5 }}>
+                              <DetailIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </CardActions>
                       </Card>
                     </Grid>
@@ -295,13 +289,11 @@ export default function ProductsPage() {
                 })}
           </Grid>
 
-          {!isLoading && paginatedProducts.length === 0 && (
+          {!isLoading && products.length === 0 && (
             <Box sx={{ textAlign: 'center', py: 8 }}>
               <Typography variant="h2" sx={{ mb: 2 }}>🔍</Typography>
               <Typography variant="h6" fontWeight={600}>Ürün bulunamadı</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Farklı bir arama terimi veya kategori deneyin.
-              </Typography>
+              <Typography variant="body2" color="text.secondary">Farklı bir arama terimi veya kategori deneyin.</Typography>
             </Box>
           )}
 
@@ -316,22 +308,15 @@ export default function ProductsPage() {
           )}
         </Container>
 
-        {/* ── Floating Cart Button (aşağı kaydırınca görünür) ── */}
         <Zoom in={showFab && totalCount > 0}>
           <Fab
             component={Link}
             href="/cart"
             sx={{
-              position: 'fixed',
-              bottom: 28,
-              right: 28,
+              position: 'fixed', bottom: 28, right: 28,
               background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-              color: 'white',
-              boxShadow: '0 8px 24px rgba(99,102,241,0.5)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #4F46E5, #7C3AED)',
-                transform: 'scale(1.05)',
-              },
+              color: 'white', boxShadow: '0 8px 24px rgba(99,102,241,0.5)',
+              '&:hover': { background: 'linear-gradient(135deg, #4F46E5, #7C3AED)', transform: 'scale(1.05)' },
               zIndex: 1200,
             }}
             aria-label="Sepete git"

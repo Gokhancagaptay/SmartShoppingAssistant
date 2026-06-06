@@ -11,6 +11,7 @@ client = AsyncIOMotorClient(MONGO_URL)
 mongo_db = client.online_market
 users_collection = mongo_db.users
 products_collection = mongo_db.products
+reviews_collection = mongo_db.reviews
 
 # Logging ayarları
 logging.basicConfig(level=logging.INFO)

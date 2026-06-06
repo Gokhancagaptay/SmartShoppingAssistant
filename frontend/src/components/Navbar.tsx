@@ -15,6 +15,7 @@ import {
   LightMode as LightIcon, DarkMode as DarkIcon,
   SettingsBrightness as SystemIcon, AutoAwesome as SparkleIcon,
   EmojiEvents as DietIcon, Person as PersonIcon,
+  Favorite as FavoriteIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
@@ -24,6 +25,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useRole } from '@/hooks/useRole'
 import { useThemeMode } from '@/context/ThemeContext'
 import { useCart } from '@/context/CartContext'
+import { useFavorites } from '@/context/FavoritesContext'
 import { useQueryClient } from 'react-query'
 
 const DRAWER_WIDTH = 260
@@ -45,6 +47,7 @@ const navItems: NavItem[] = [
   { label: 'Tarifler', href: '/recipes', icon: <RecipeIcon fontSize="small" />, userOnly: true },
   { label: 'Beslenme', href: '/nutrition', icon: <NutritionIcon fontSize="small" />, userOnly: true },
   { label: 'Diyet', href: '/preferences', icon: <DietIcon fontSize="small" />, userOnly: true },
+  { label: 'Favorilerim', href: '/favorites', icon: <FavoriteIcon fontSize="small" />, userOnly: true },
   { label: 'Admin', href: '/admin', icon: <AdminIcon fontSize="small" />, adminOnly: true },
 ]
 
@@ -55,6 +58,7 @@ export default function Navbar() {
   const { mode, setMode } = useThemeMode()
   const queryClient = useQueryClient()
   const { totalCount } = useCart()
+  const { favoriteCount } = useFavorites()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const router = useRouter()
@@ -194,6 +198,8 @@ export default function Navbar() {
                 <ListItemIcon sx={{ minWidth: 38 }}>
                   {item.href === '/cart' && totalCount > 0
                     ? <Badge badgeContent={totalCount} color="error">{item.icon}</Badge>
+                    : item.href === '/favorites' && favoriteCount > 0
+                    ? <Badge badgeContent={favoriteCount} color="error">{item.icon}</Badge>
                     : item.icon}
                 </ListItemIcon>
                 <ListItemText

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from database import products_collection
+from database import products_collection, reviews_collection
 from api.user import router as user_router, get_current_user as firebase_bearer_user
 from api.recipe import router as recipe_router
 from api.product import router as product_router
@@ -43,6 +43,7 @@ firebase_admin.initialize_app(
 async def lifespan(app: FastAPI):
     try:
         await products_collection.create_index([("name", 1)], unique=True)
+        await reviews_collection.create_index([("product_id", 1), ("uid", 1)], unique=True)
     except Exception:
         pass
     yield
