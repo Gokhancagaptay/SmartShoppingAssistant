@@ -24,6 +24,7 @@ import MainLayout from '@/components/MainLayout'
 import { useCart } from '@/context/CartContext'
 import { shippingFeeTl } from '@/lib/orderRules'
 import { useQueryClient } from 'react-query'
+import { useToast } from '@/context/ToastContext'
 
 // ── Tipler ───────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ const emptyCard    = { label:'', cardNumber:'', cardHolder:'', expiry:'', cvv:''
 export default function CheckoutPage() {
   const { items, totalPrice, clearCart } = useCart()
   const queryClient = useQueryClient()
+  const toast = useToast()
 
   // ── Adres state ──
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
@@ -86,6 +88,7 @@ export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
+  const [orderSummary, setOrderSummary] = useState<{ total: number; itemCount: number } | null>(null)
 
   // ── Mevcut kullanıcı UID ──
   const [currentUid, setCurrentUid] = useState<string | null>(null)
@@ -255,8 +258,11 @@ export default function CheckoutPage() {
         },
         token ? { headers:{ Authorization:`Bearer ${token}` } } : {}
       )
-      setOrderId(res.data.order_id || `ORD-${Date.now()}`)
+      const newOrderId = res.data.order_id || `ORD-${Date.now()}`
+      setOrderSummary({ total, itemCount: items.length })
+      setOrderId(newOrderId)
       clearCart()
+      toast.success(`Siparişiniz alındı! Sipariş No: ${newOrderId}`)
       queryClient.invalidateQueries('products')
       queryClient.invalidateQueries('admin-stats')
       queryClient.invalidateQueries('admin-orders')
@@ -284,19 +290,68 @@ export default function CheckoutPage() {
       <AuthGuard>
         <MainLayout>
           <Container maxWidth="sm">
-            <Box sx={{ textAlign:'center', py:{ xs:8, md:12 } }}>
-              <Box sx={{ width:110, height:110, borderRadius:'50%', background:'linear-gradient(135deg,#10B981,#0D9488)', display:'flex', alignItems:'center', justifyContent:'center', mx:'auto', mb:3, boxShadow:'0 12px 40px rgba(16,185,129,0.3)' }}>
-                <CheckIcon sx={{ fontSize:56, color:'white' }} />
+            <Box sx={{ textAlign:'center', py:{ xs:6, md:10 } }}>
+              <Box
+                sx={{
+                  width:120, height:120, borderRadius:'50%',
+                  background:'linear-gradient(135deg,#10B981,#0D9488)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  mx:'auto', mb:3,
+                  boxShadow:'0 12px 40px rgba(16,185,129,0.35)',
+                  animation:'successPop 0.5s cubic-bezier(0.175,0.885,0.32,1.275)',
+                  '@keyframes successPop': {
+                    '0%': { transform:'scale(0)', opacity:0 },
+                    '100%': { transform:'scale(1)', opacity:1 },
+                  },
+                }}
+              >
+                <CheckIcon sx={{ fontSize:60, color:'white' }} />
               </Box>
-              <Typography variant="h4" fontWeight={800} gutterBottom>Siparişiniz Alındı!</Typography>
-              <Typography variant="body1" color="text.secondary">Sipariş No: <strong>{orderId}</strong></Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt:1, mb:4 }}>
-                Satın aldığınız ürünler stoğunuza eklendi. En kısa sürede teslim edilecektir.
+
+              <Typography variant="h4" fontWeight={800} gutterBottom>Siparişiniz Alındı! 🎉</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb:2.5 }}>
+                Sipariş No: <strong style={{ fontFamily:'monospace', fontSize:'1rem' }}>{orderId}</strong>
               </Typography>
-              <Stack direction={{ xs:'column', sm:'row' }} spacing={2} justifyContent="center">
-                <Button variant="contained" component={Link} href="/" size="large" sx={{ borderRadius:3, px:4 }}>Ana Sayfaya Dön</Button>
-                <Button variant="outlined" component={Link} href="/stock" size="large" sx={{ borderRadius:3, px:4 }}>Stoğumu Görüntüle</Button>
+
+              {orderSummary && (
+                <Stack
+                  direction="row"
+                  spacing={0}
+                  divider={<Box sx={{ width:1, bgcolor:'divider' }} />}
+                  sx={{ bgcolor:'action.hover', borderRadius:3, overflow:'hidden', mb:3, border:'1px solid', borderColor:'divider' }}
+                >
+                  <Box sx={{ flex:1, py:2 }}>
+                    <Typography variant="h6" fontWeight={800} color="primary">{orderSummary.itemCount}</Typography>
+                    <Typography variant="caption" color="text.secondary">Ürün</Typography>
+                  </Box>
+                  <Box sx={{ flex:1, py:2 }}>
+                    <Typography variant="h6" fontWeight={800} color="primary">{orderSummary.total.toFixed(2)} ₺</Typography>
+                    <Typography variant="caption" color="text.secondary">Toplam</Typography>
+                  </Box>
+                  <Box sx={{ flex:1, py:2 }}>
+                    <Typography variant="h6" fontWeight={800} sx={{ color:'warning.main' }}>~2-4 gün</Typography>
+                    <Typography variant="caption" color="text.secondary">Tahmini Teslimat</Typography>
+                  </Box>
+                </Stack>
+              )}
+
+              <Typography variant="body2" color="text.secondary" sx={{ mb:4, px:2 }}>
+                Sipariş durumunuzu profilinizden anlık olarak takip edebilirsiniz.
+              </Typography>
+
+              <Stack direction={{ xs:'column', sm:'row' }} spacing={1.5} justifyContent="center">
+                <Button variant="contained" component={Link} href="/profile" size="large"
+                  sx={{ borderRadius:3, px:4, background:'linear-gradient(135deg,#6366F1,#8B5CF6)' }}>
+                  Siparişlerimi Görüntüle
+                </Button>
+                <Button variant="outlined" component={Link} href="/" size="large" sx={{ borderRadius:3, px:4 }}>
+                  Ana Sayfaya Dön
+                </Button>
               </Stack>
+              <Button variant="text" component={Link} href="/stock" size="small"
+                sx={{ mt:1.5, color:'text.secondary', textTransform:'none' }}>
+                Stoğumu Görüntüle
+              </Button>
             </Box>
           </Container>
         </MainLayout>

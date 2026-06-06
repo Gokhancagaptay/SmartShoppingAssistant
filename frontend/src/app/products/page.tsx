@@ -219,11 +219,22 @@ export default function ProductsPage() {
                           />
                           {/* Stok etiketi */}
                           <Chip
-                            label={product.stock > 0 ? 'Stokta' : 'Tükendi'}
+                            label={
+                              product.stock === 0
+                                ? 'Tükendi'
+                                : product.stock <= 5
+                                ? `Son ${product.stock} adet!`
+                                : 'Stokta'
+                            }
                             size="small"
                             sx={{
                               position: 'absolute', top: 8, right: 8,
-                              bgcolor: product.stock > 0 ? 'success.main' : 'error.main',
+                              bgcolor:
+                                product.stock === 0
+                                  ? 'error.main'
+                                  : product.stock <= 5
+                                  ? 'warning.main'
+                                  : 'success.main',
                               color: 'white', fontWeight: 700, fontSize: 11,
                             }}
                           />

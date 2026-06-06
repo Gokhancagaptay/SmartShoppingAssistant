@@ -13,12 +13,13 @@ import {
   LocationOn as AddressIcon, CreditCard as CardIcon,
   Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon,
   Warning as WarningIcon, CheckCircle as SaveIcon,
-  Logout as LogoutIcon,
+  Logout as LogoutIcon, Cancel as CancelIcon,
 } from '@mui/icons-material'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
 import axios from 'axios'
 import { getAuth, signOut, onAuthStateChanged } from 'firebase/auth'
-import { app } from '@/lib/firebase'
+import { ref, onValue } from 'firebase/database'
+import { app, database } from '@/lib/firebase'
 import AuthGuard from '@/components/AuthGuard'
 import MainLayout from '@/components/MainLayout'
 import { useRouter } from 'next/navigation'
@@ -96,6 +97,7 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState(0)
   const [uid, setUid] = useState<string | null>(null)
   const [deleteAccountDialog, setDeleteAccountDialog] = useState(false)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
 
   // Address dialog
   const emptyAddr = { title: '', fullName: '', phone: '', city: '', district: '', detail: '' }
@@ -124,17 +126,26 @@ export default function ProfilePage() {
     { enabled: !!uid, onSuccess: (d) => { if (!profileEditMode) setProfileForm(d) } }
   )
 
-  const { data: orders = [], isLoading: ordersLoading } = useQuery<UserOrder[]>(
-    'user-orders',
-    async () => {
-      const headers = await getAuthHeader()
-      const res = await axios.get('/api/auth/orders', { headers })
-      const data = res.data
-      const list: UserOrder[] = Array.isArray(data) ? data : Object.values(data || {})
-      return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    },
-    { enabled: !!uid && activeTab === 1, refetchInterval: activeTab === 1 ? 30_000 : false }
-  )
+  const [orders, setOrders] = useState<UserOrder[]>([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+
+  useEffect(() => {
+    if (!uid || activeTab !== 1) return
+    setOrdersLoading(true)
+    const ordersRef = ref(database, `users/${uid}/orders`)
+    const unsub = onValue(ordersRef, (snapshot) => {
+      const data = snapshot.val()
+      if (!data) {
+        setOrders([])
+      } else {
+        const list = Object.values(data) as UserOrder[]
+        list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        setOrders(list)
+      }
+      setOrdersLoading(false)
+    })
+    return () => unsub()
+  }, [uid, activeTab])
 
   const { data: addresses = [], isLoading: addrLoading, refetch: refetchAddresses } = useQuery<SavedAddress[]>(
     'user-addresses',
@@ -209,6 +220,23 @@ export default function ProfilePage() {
         queryClient.clear()
         await signOut(getAuth(app))
         router.replace('/login')
+      },
+    }
+  )
+
+  const cancelOrder = useMutation(
+    async (orderId: string) => {
+      const headers = await getAuthHeader()
+      return axios.post(`/api/auth/orders/${orderId}/cancel`, {}, { headers })
+    },
+    {
+      onSuccess: (_, orderId) => {
+        setCancellingId(null)
+        toast.success('Sipariş iptal edildi. Stok iade edildi.')
+      },
+      onError: (err: any) => {
+        setCancellingId(null)
+        toast.error(err.response?.data?.detail || 'Sipariş iptal edilemedi. Lütfen tekrar deneyin.')
       },
     }
   )
@@ -424,6 +452,26 @@ export default function ProfilePage() {
                               <Typography variant="caption" color="text.secondary">
                                 {order.payment_method === 'cash' ? 'Kapıda Ödeme' : 'Kartla Ödeme'}
                               </Typography>
+                              {order.status === 'pending' && (
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="error"
+                                  startIcon={
+                                    cancellingId === order.order_id && cancelOrder.isLoading
+                                      ? <CircularProgress size={13} color="inherit" />
+                                      : <CancelIcon sx={{ fontSize: 15 }} />
+                                  }
+                                  disabled={cancelOrder.isLoading}
+                                  onClick={() => {
+                                    setCancellingId(order.order_id)
+                                    cancelOrder.mutate(order.order_id)
+                                  }}
+                                  sx={{ borderRadius: 2, fontWeight: 700, textTransform: 'none', mt: 0.5 }}
+                                >
+                                  İptal Et
+                                </Button>
+                              )}
                             </Stack>
                           </Stack>
                         </Card>

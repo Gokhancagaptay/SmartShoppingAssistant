@@ -652,6 +652,51 @@ def list_orders(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Siparişler alınamadı: {str(e)}")
 
 
+@router.post("/orders/{order_id}/cancel", summary="Siparişi İptal Et")
+async def cancel_order(
+    order_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Yalnızca 'pending' durumdaki siparişi iptal eder ve MongoDB stoğunu iade eder."""
+    import asyncio
+    import logging
+    from database import products_collection
+    from bson import ObjectId
+
+    logger = logging.getLogger("order")
+
+    try:
+        decoded_token = _verify_id_token(credentials.credentials)
+        uid = decoded_token["uid"]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Geçersiz token: {str(e)}")
+
+    order_ref = db.reference(f"users/{uid}/orders/{order_id}")
+    order = await asyncio.to_thread(order_ref.get)
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Sipariş bulunamadı.")
+
+    if order.get("status") != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Sadece 'beklemede' durumundaki siparişler iptal edilebilir."
+        )
+
+    await asyncio.to_thread(order_ref.update, {"status": "cancelled"})
+
+    for item in order.get("items", []):
+        try:
+            await products_collection.update_one(
+                {"_id": ObjectId(item["id"])},
+                {"$inc": {"stock": item.get("quantity", 0)}}
+            )
+        except Exception as e:
+            logger.error(f"Stok geri iade edilemedi [{item.get('name', '?')}]: {str(e)}")
+
+    return {"message": "Sipariş başarıyla iptal edildi.", "order_id": order_id}
+
+
 # ─── Checkout Adres Modeli & Endpoint'leri ──────────────────────────────────
 
 class CheckoutAddressModel(BaseModel):
