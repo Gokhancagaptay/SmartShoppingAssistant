@@ -42,6 +42,54 @@ class AppTheme {
     colors: [primaryDeepColor, Color(0xFF7C3AED)],
   );
 
+  static const LinearGradient secondaryGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [secondaryColor, Color(0xFF0D9488)],
+  );
+
+  static const LinearGradient warmGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [warningColor, errorColor],
+  );
+
+  static const LinearGradient coolGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF3B82F6), primaryColor],
+  );
+
+  static const LinearGradient pinkGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFEC4899), accentPurple],
+  );
+
+  static const Map<String, Color> statusColors = {
+    'pending': Color(0xFFF59E0B),
+    'processing': Color(0xFF3B82F6),
+    'shipped': Color(0xFF6366F1),
+    'delivered': Color(0xFF10B981),
+    'cancelled': Color(0xFFEF4444),
+    'completed': Color(0xFF10B981),
+  };
+
+  static Color getStatusColor(String status) =>
+      statusColors[status.toLowerCase()] ?? const Color(0xFF94A3B8);
+
+  static String getStatusLabel(String status) {
+    const labels = {
+      'pending': 'Bekliyor',
+      'processing': 'Hazırlanıyor',
+      'shipped': 'Kargoya Verildi',
+      'delivered': 'Teslim Edildi',
+      'cancelled': 'İptal Edildi',
+      'completed': 'Tamamlandı',
+    };
+    return labels[status.toLowerCase()] ?? status;
+  }
+
   // -------------------------------------------------------
   // AÇIK TEMA
   // -------------------------------------------------------
