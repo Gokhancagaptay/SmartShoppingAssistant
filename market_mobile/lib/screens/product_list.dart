@@ -10,9 +10,11 @@ import 'cart_screen.dart';
 import 'profile_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'stock_screen.dart';
+import 'dashboard_screen.dart';
 import '../theme/app_theme.dart';
 import '../constants/api_constants.dart';
 import '../theme/theme_mode_holder.dart';
+import '../widgets/app_bottom_nav.dart';
 import 'dietary_preferences_screen.dart';
 
 /// Uygulama genelinde kullanılan kategori listesi
@@ -435,84 +437,36 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 
   Widget _buildBottomNav(bool isDark) {
-    final cartCount = context.watch<CartProvider>().itemCount;
-    final primary = isDark ? AppTheme.primaryDarkColor : AppTheme.primaryColor;
-    final muted = isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8);
-
-    return SafeArea(
-      top: false,
-      child: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          height: 68,
-          indicatorColor: primary.withValues(alpha: 0.14),
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: selected ? primary : muted,
-            );
-          }),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return IconThemeData(color: selected ? primary : muted, size: 24);
-          }),
-        ),
-        child: NavigationBar(
-        selectedIndex: _currentNavIndex,
-        backgroundColor: isDark ? AppTheme.darkSurface : Colors.white,
-        surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.black26,
-        elevation: isDark ? 0 : 6,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (index) async {
-          if (index == 0) {
-            setState(() => _currentNavIndex = 0);
-            return;
-          }
-          setState(() => _currentNavIndex = index);
-          if (index == 1) {
-            await Navigator.push<void>(
-              context,
-              MaterialPageRoute<void>(builder: (_) => StockScreen()),
-            );
-          } else if (index == 2) {
-            await Navigator.push<void>(
-              context,
-              MaterialPageRoute<void>(builder: (_) => const CartScreen()),
-            );
-          } else if (index == 3) {
-            await Navigator.push<void>(
-              context,
-              MaterialPageRoute<void>(builder: (_) => const ProfileScreen(inPanel: false)),
-            );
-          }
-          if (mounted) setState(() => _currentNavIndex = 0);
-        },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.store_outlined),
-            selectedIcon: Icon(Icons.store_rounded),
-            label: 'Mağaza',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2_rounded),
-            label: 'Stoğum',
-          ),
-          NavigationDestination(
-            icon: _CartNavIcon(outlined: true, count: cartCount),
-            selectedIcon: _CartNavIcon(outlined: false, count: cartCount),
-            label: 'Sepet',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.person_outline_rounded),
-            selectedIcon: Icon(Icons.person_rounded),
-            label: 'Profil',
-          ),
-        ],
-        ),
-      ),
+    return AppBottomNav(
+      current: AppNavIndex.products,
+      onTap: (index) async {
+        if (index == AppNavIndex.products) return;
+        if (index == AppNavIndex.home) {
+          if (!context.mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const DashboardScreen()),
+          );
+        } else if (index == AppNavIndex.cart) {
+          if (!context.mounted) return;
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const CartScreen()),
+          );
+        } else if (index == AppNavIndex.stock) {
+          if (!context.mounted) return;
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => StockScreen()),
+          );
+        } else if (index == AppNavIndex.profile) {
+          if (!context.mounted) return;
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute<void>(builder: (_) => const ProfileScreen(inPanel: false)),
+          );
+        }
+      },
     );
   }
 
@@ -578,42 +532,3 @@ class _ProductListPageState extends State<ProductListPage> {
   }
 }
 
-/// Sepet sekmesi için rozetli ikon (Material NavigationBar ile uyumlu).
-class _CartNavIcon extends StatelessWidget {
-  final bool outlined;
-  final int count;
-
-  const _CartNavIcon({required this.outlined, required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = Icon(
-      outlined ? Icons.shopping_cart_outlined : Icons.shopping_cart_rounded,
-      size: 24,
-    );
-    if (count <= 0) return icon;
-    final label = count > 99 ? '99+' : '$count';
-    return Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.center,
-      children: [
-        icon,
-        Positioned(
-          right: -8,
-          top: -6,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: const BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              borderRadius: BorderRadius.all(Radius.circular(10)),
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}

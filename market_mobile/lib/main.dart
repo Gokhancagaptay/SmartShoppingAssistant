@@ -6,10 +6,15 @@ import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'providers/cart_provider.dart';
+import 'providers/favorites_provider.dart';
 import 'screens/product_list.dart';
 import 'screens/register_screen.dart';
 import 'screens/login_screen.dart' show LoginScreen;
 import 'screens/dietary_preferences_screen.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/favorites_screen.dart';
+import 'screens/recipes_screen.dart';
+import 'screens/nutrition_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_mode_holder.dart';
 import 'package:market_mobile/admin_panel/admin_main.dart';
@@ -124,8 +129,11 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => CartProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(create: (_) => FavoritesProvider()),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Online Market',
@@ -136,8 +144,12 @@ class _MyAppState extends State<MyApp> {
         routes: {
           '/register': (context) => const RegisterScreen(),
           '/login': (context) => const LoginScreen(),
+          '/home': (context) => const DashboardScreen(),
           '/products': (context) => const ProductListPage(),
           '/preferences': (context) => const DietaryPreferencesScreen(),
+          '/favorites': (context) => const FavoritesScreen(),
+          '/recipes': (context) => const RecipesScreen(),
+          '/nutrition': (context) => const NutritionScreen(),
         },
         onGenerateRoute: (settings) {
           if (settings.name == '/admin') {
@@ -159,6 +171,6 @@ class _MyAppState extends State<MyApp> {
     }
     if (!_isLoggedIn) return const LoginScreen();
     if (_userRole == 'admin') return const AdminMain();
-    return const ProductListPage();
+    return const DashboardScreen();
   }
 }
