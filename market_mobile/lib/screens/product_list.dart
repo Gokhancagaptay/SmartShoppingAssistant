@@ -523,6 +523,8 @@ class _ProductListPageState extends State<ProductListPage> {
                 price: (p["price"] as num).toDouble(),
                 stock: p["stock"] ?? 0,
                 category: p["category"] ?? _selectedCategory,
+                averageRating: (p["average_rating"] as num?)?.toDouble() ?? 0.0,
+                reviewCount: (p["review_count"] as num?)?.toInt() ?? 0,
               );
             },
           );

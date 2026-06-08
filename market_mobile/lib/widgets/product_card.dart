@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/favorites_provider.dart';
 import '../theme/app_theme.dart';
+import 'rating_bar.dart';
 
 class ProductCard extends StatelessWidget {
   final String id;
@@ -13,6 +14,8 @@ class ProductCard extends StatelessWidget {
   final String? unit;
   final String? label;
   final String category;
+  final double averageRating;
+  final int reviewCount;
 
   const ProductCard({
     super.key,
@@ -24,6 +27,8 @@ class ProductCard extends StatelessWidget {
     this.unit = 'adet',
     this.label,
     this.category = 'all',
+    this.averageRating = 0.0,
+    this.reviewCount = 0,
   });
 
   @override
@@ -160,16 +165,42 @@ class ProductCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      name,
-                      style: TextStyle(
-                        color: isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: TextStyle(
+                            color: isDark ? const Color(0xFFF1F5F9) : const Color(0xFF0F172A),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (averageRating > 0) ...[
+                          const SizedBox(height: 3),
+                          RatingBar(rating: averageRating, reviewCount: reviewCount),
+                        ],
+                        if (!isOutOfStock && stock <= 5) ...[
+                          const SizedBox(height: 3),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.warningColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'Son $stock adet',
+                              style: const TextStyle(
+                                  color: AppTheme.warningColor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
