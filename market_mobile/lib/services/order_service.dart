@@ -399,6 +399,28 @@ class OrderService {
     }
   }
 
+  // Sipariş iptal etme
+  Future<void> cancelOrder(String orderId) async {
+    final userId = await _getUserId();
+    if (userId == null) throw Exception('User not logged in');
+
+    final url = "$_firebaseDbUrl/orders/$userId/$orderId.json";
+    try {
+      final response = await http.patch(
+        Uri.parse(url),
+        body: json.encode({'status': 'cancelled'}),
+      );
+      if (response.statusCode == 200) return;
+      throw Exception('Cancel failed: ${response.statusCode}');
+    } catch (_) {
+      try {
+        await _database.ref('orders/$userId/$orderId').update({'status': 'cancelled'});
+      } catch (e) {
+        rethrow;
+      }
+    }
+  }
+
   // Bekleyen siparişleri senkronize et
   Future<void> syncPendingOrders() async {
     print('🔄 Bekleyen siparişler senkronize ediliyor...');
