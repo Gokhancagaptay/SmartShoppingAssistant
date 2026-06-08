@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
+import '../providers/favorites_provider.dart';
 import '../theme/app_theme.dart';
 
 class ProductCard extends StatelessWidget {
@@ -29,8 +30,10 @@ class ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cartProvider = context.watch<CartProvider>();
+    final favProvider = context.watch<FavoritesProvider>();
     final cartQty = cartProvider.getItemQuantity(id);
     final isOutOfStock = stock < 1;
+    final isFav = favProvider.isFavorite(id);
 
     return Container(
       decoration: BoxDecoration(
@@ -93,6 +96,31 @@ class ProductCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  // Favori butonu (sol üst)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: GestureDetector(
+                      onTap: () => context.read<FavoritesProvider>().toggle(
+                        id: id, name: name, price: price, imageUrl: imageUrl,
+                        stock: stock, unit: unit, label: label, category: category,
+                      ),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+                        ),
+                        child: Icon(
+                          isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          size: 16,
+                          color: isFav ? AppTheme.errorColor : Colors.grey[400],
+                        ),
+                      ),
+                    ),
+                  ),
                   // Sepetteki adet rozeti
                   if (cartQty > 0)
                     Positioned(
