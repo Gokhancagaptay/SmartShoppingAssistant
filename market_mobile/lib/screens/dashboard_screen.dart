@@ -14,6 +14,7 @@ import 'recipes_screen.dart';
 import 'nutrition_screen.dart';
 import 'favorites_screen.dart';
 import 'dietary_preferences_screen.dart';
+import '../widgets/global_ai_assistant.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -87,6 +88,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
+      floatingActionButton: const AiFab(),
       bottomNavigationBar: AppBottomNav(
         current: AppNavIndex.home,
         onTap: (index) async {

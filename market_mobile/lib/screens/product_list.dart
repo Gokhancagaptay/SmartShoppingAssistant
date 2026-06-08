@@ -15,6 +15,7 @@ import '../theme/app_theme.dart';
 import '../constants/api_constants.dart';
 import '../theme/theme_mode_holder.dart';
 import '../widgets/app_bottom_nav.dart';
+import '../widgets/global_ai_assistant.dart';
 import 'dietary_preferences_screen.dart';
 
 /// Uygulama genelinde kullanılan kategori listesi
@@ -432,6 +433,7 @@ class _ProductListPageState extends State<ProductListPage> {
           Expanded(child: _buildProductGrid(isWeb: false)),
         ],
       ),
+      floatingActionButton: const AiFab(),
       bottomNavigationBar: _buildBottomNav(isDark),
     );
   }
